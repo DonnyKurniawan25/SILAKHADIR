@@ -112,15 +112,14 @@ class Command(BaseCommand):
 
                 # Seed peserta + absensi
                 for i in range(1, 6):
-                    is_nik = bool(i % 2)
-                    if is_nik:
-                        identity_number = f'32010123456700{i:04d}'  # 16 digit
-                    else:
-                        identity_number = f'19900101202001{i:04d}'  # 18 digit
+                    is_asn = bool(i % 2 == 0)
+                    nik = f'32010123456700{i:04d}'  # 16 digit
+                    nip = f'19900101202001{i:04d}' if is_asn else ''  # 18 digit
                     p = Participant.objects.create(
                         event=event,
-                        identity_type='NIK' if is_nik else 'NIP',
-                        identity_number=identity_number,
+                        nik=nik,
+                        nip=nip,
+                        is_asn=is_asn,
                         full_name=f'Peserta Contoh {i}',
                         institution='Dinas Kominfo',
                         position='Staff',

@@ -33,7 +33,8 @@ class CertificateNumberFormatSerializer(serializers.ModelSerializer):
 
 class CertificateSerializer(serializers.ModelSerializer):
     participant_name = serializers.CharField(source='participant.full_name', read_only=True)
-    identity_number = serializers.CharField(source='participant.identity_number', read_only=True)
+    nik = serializers.CharField(source='participant.nik', read_only=True)
+    nip = serializers.CharField(source='participant.nip', read_only=True)
     event_title = serializers.CharField(source='event.title', read_only=True)
     event_start = serializers.DateTimeField(source='event.start_date', read_only=True)
     event_end = serializers.DateTimeField(source='event.end_date', read_only=True)
@@ -45,7 +46,7 @@ class CertificateSerializer(serializers.ModelSerializer):
         model = Certificate
         fields = (
             'id', 'event', 'event_title', 'event_start', 'event_end',
-            'participant', 'participant_name', 'identity_number',
+            'participant', 'participant_name', 'nik', 'nip',
             'certificate_number', 'number_format', 'source',
             'status', 'pdf_file', 'qr_code',
             'verification_token', 'download_token',

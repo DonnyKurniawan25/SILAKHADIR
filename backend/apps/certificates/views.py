@@ -1,3 +1,4 @@
+from django.db.models import Q
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
@@ -92,7 +93,8 @@ class CertificateViewSet(viewsets.ReadOnlyModelViewSet):
     search_fields = [
         'certificate_number',
         'participant__full_name',
-        'participant__identity_number',
+        'participant__nik',
+        'participant__nip',
         'event__title',
     ]
     filterset_fields = ['status', 'event', 'source']
@@ -135,8 +137,8 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
 
         Payload (multipart/form-data):
         - participant_id     : UUID peserta (opsional jika mengirim data NIK)
-        - identity_type      : 'NIK' / 'NIP' (jika peserta baru)
-        - identity_number    : NIK/NIP (jika peserta baru)
+        - nik                : NIK (untuk lookup/membuat peserta baru)
+        - nip                : NIP (opsional, untuk peserta ASN baru)
         - full_name          : Nama (jika peserta baru)
         - institution, position, phone, email : opsional
         - certificate_number : nomor sertifikat dari admin (required)
@@ -151,18 +153,21 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
             )
         else:
             # Buat peserta baru kalau admin upload untuk orang yang belum terdaftar
-            identity_number = (request.data.get('identity_number') or '').strip()
+            nik = (request.data.get('nik') or '').strip()
             full_name = (request.data.get('full_name') or '').strip()
-            if not identity_number or not full_name:
+            if not nik or not full_name:
                 return Response(
-                    {'detail': 'participant_id, atau identity_number + full_name wajib diisi.'},
+                    {'detail': 'participant_id, atau nik + full_name wajib diisi.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            nip = (request.data.get('nip') or '').strip()
+            is_asn = bool(nip)
             participant, _ = Participant.objects.get_or_create(
                 event=event,
-                identity_number=identity_number,
+                nik=nik,
                 defaults={
-                    'identity_type': request.data.get('identity_type', 'NIK'),
+                    'nip': nip,
+                    'is_asn': is_asn,
                     'full_name': full_name,
                     'institution': request.data.get('institution', ''),
                     'position': request.data.get('position', ''),
@@ -286,41 +291,39 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
             participant, score = find_participant(text, participants)
 
             if not participant and id_numbers:
-                # Coba match by identity number
+                # Coba match by NIK atau NIP
                 for idnum in id_numbers:
-                    hit = next((p for p in participants if p.identity_number == idnum), None)
+                    hit = next((p for p in participants if p.nik == idnum or p.nip == idnum), None)
                     if hit:
                         participant = hit
                         score = 1.0
                         break
 
             if not participant and create_missing and id_numbers:
-                # Buat peserta baru dengan NIK pertama yang ditemukan
-                idnum = id_numbers[0]
-                nama_guess = _guess_name_from_text(text) or f'Peserta ({idnum})'
-                if not dry_run:
-                    participant, _ = Participant.objects.get_or_create(
-                        event=event,
-                        identity_number=idnum,
-                        defaults={
-                            'identity_type': 'NIK' if len(idnum) == 16 else 'NIP',
+                # Buat peserta baru hanya jika ditemukan NIK 16 digit.
+                idnum = next((n for n in id_numbers if len(n) == 16), None)
+                if idnum:
+                    nama_guess = _guess_name_from_text(text) or f'Peserta ({idnum})'
+                    if not dry_run:
+                        participant, _ = Participant.objects.get_or_create(
+                            event=event,
+                            nik=idnum,
+                            defaults={'full_name': nama_guess},
+                        )
+                        participants.append(participant)
+                    else:
+                        # dry run -> cukup simulasi
+                        item['matched_participant'] = {
+                            'new': True,
+                            'nik': idnum,
                             'full_name': nama_guess,
-                        },
-                    )
-                    participants.append(participant)
-                else:
-                    # dry run -> cukup simulasi
-                    item['matched_participant'] = {
-                        'new': True,
-                        'identity_number': idnum,
-                        'full_name': nama_guess,
-                    }
+                        }
 
             if participant:
                 item['matched_participant'] = {
                     'id': str(participant.id),
                     'full_name': participant.full_name,
-                    'identity_number': participant.identity_number,
+                    'nik': participant.nik,
                 }
                 item['matched_score'] = round(score, 3)
 
@@ -394,24 +397,24 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
 # ---------------------- PUBLIC ENDPOINTS ----------------------
 
 class PublicCheckCertificateView(APIView):
-    """Cek sertifikat berdasarkan NIK/NIP. Opsional filter event."""
+    """Cek sertifikat berdasarkan NIK. Opsional filter event."""
     permission_classes = [AllowAny]
 
     def get(self, request):
-        identity_number = (request.GET.get('identity_number') or '').strip()
+        nik = (request.GET.get('nik') or request.GET.get('identity_number') or '').strip()
         event_id = request.GET.get('event_id')
 
-        if not identity_number:
+        if not nik:
             return Response(
-                {'detail': 'identity_number wajib diisi.'},
+                {'detail': 'nik wajib diisi.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Cari semua sertifikat lintas event untuk peserta dengan NIK/NIP yang sama.
+        # Cari semua sertifikat lintas event untuk peserta dengan NIK yang sama.
         qs = (
             Certificate.objects
             .filter(
-                participant__identity_number=identity_number,
+                Q(participant__nik=nik) | Q(participant__nip=nik),
                 status=Certificate.Status.AVAILABLE,
             )
             .exclude(pdf_file='')

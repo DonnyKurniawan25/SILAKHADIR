@@ -13,7 +13,7 @@ export default function AttendanceForm() {
   const [event, setEvent] = useState(null)
   const [loading, setLoading] = useState(true)
   const { register, handleSubmit, formState: { errors, isSubmitting }, watch } = useForm({
-    defaultValues: { identity_type: 'NIK' },
+    defaultValues: { is_asn: false, nip: '' },
   })
   const sigRef = useRef(null)
   const captchaRef = useRef(null)
@@ -39,6 +39,7 @@ export default function AttendanceForm() {
     try {
       await submitAttendance(slug, {
         ...data,
+        nip: data.is_asn ? data.nip : '',
         signature,
         captcha_token: captcha.token,
         captcha_answer: captcha.answer,
@@ -91,7 +92,7 @@ export default function AttendanceForm() {
   }
 
   const accepting = event.attendance_open && event.status === 'open'
-  const idType = watch('identity_type')
+  const isAsn = watch('is_asn')
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
@@ -128,29 +129,47 @@ export default function AttendanceForm() {
       <form onSubmit={handleSubmit(onSubmit)} className="card space-y-4">
         <div>
           <div className="eyebrow mb-3">A. Data Identitas</div>
-          <div className="grid md:grid-cols-3 gap-3">
+          <div className="grid md:grid-cols-2 gap-3">
             <div>
-              <label className="label">Jenis Identitas</label>
-              <select className="input" {...register('identity_type', { required: true })}>
-                <option value="NIK">NIK (Masyarakat)</option>
-                <option value="NIP">NIP (ASN)</option>
-              </select>
-            </div>
-            <div className="md:col-span-2">
-              <label className="label">Nomor {idType === 'NIP' ? 'NIP' : 'NIK'}</label>
+              <label className="label">Nomor NIK</label>
               <input
                 className="input"
                 inputMode="numeric"
-                maxLength={32}
-                {...register('identity_number', {
-                  required: 'Wajib diisi',
+                maxLength={16}
+                {...register('nik', {
+                  required: 'NIK wajib diisi',
                   pattern: { value: /^[0-9]+$/, message: 'Hanya angka' },
-                  minLength: { value: idType === 'NIP' ? 18 : 16, message: `Minimal ${idType === 'NIP' ? 18 : 16} digit` },
+                  minLength: { value: 16, message: 'NIK harus 16 digit' },
+                  maxLength: { value: 16, message: 'NIK harus 16 digit' },
                 })}
               />
-              {errors.identity_number && <p className="text-xs text-rose-600 mt-1">{errors.identity_number.message}</p>}
+              {errors.nik && <p className="text-xs text-rose-600 mt-1">{errors.nik.message}</p>}
+            </div>
+            <div>
+              <label className="label">Jenis Peserta</label>
+              <label className="flex items-center gap-2 h-10 px-3 border border-slate-300 rounded bg-white text-sm">
+                <input type="checkbox" {...register('is_asn')} />
+                Saya adalah ASN
+              </label>
             </div>
           </div>
+          {isAsn && (
+            <div className="mt-3">
+              <label className="label">Nomor NIP</label>
+              <input
+                className="input"
+                inputMode="numeric"
+                maxLength={18}
+                {...register('nip', {
+                  required: 'NIP wajib diisi untuk ASN',
+                  pattern: { value: /^[0-9]+$/, message: 'Hanya angka' },
+                  minLength: { value: 18, message: 'NIP harus 18 digit' },
+                  maxLength: { value: 18, message: 'NIP harus 18 digit' },
+                })}
+              />
+              {errors.nip && <p className="text-xs text-rose-600 mt-1">{errors.nip.message}</p>}
+            </div>
+          )}
           <div className="mt-3">
             <label className="label">Nama Lengkap</label>
             <input className="input" {...register('full_name', { required: 'Nama wajib diisi' })} />

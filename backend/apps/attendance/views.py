@@ -75,17 +75,17 @@ class PublicAttendanceView(APIView):
         serializer = PublicAttendanceSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        identity_number = data['identity_number']
+        nik = data['nik']
 
-        # Cek awal: peserta dengan NIK/NIP ini sudah pernah absen?
+        # Cek awal: peserta dengan NIK ini sudah pernah absen?
         already = Attendance.objects.filter(
             event=event,
-            participant__identity_number=identity_number,
+            participant__nik=nik,
         ).select_related('participant').first()
         if already:
             return Response({
                 'detail': (
-                    f'NIK/NIP {identity_number} sudah tercatat hadir pada kegiatan ini '
+                    f'NIK {nik} sudah tercatat hadir pada kegiatan ini '
                     f'atas nama {already.participant.full_name} pada '
                     f'{already.attendance_time.strftime("%d %b %Y %H:%M")}.'
                 ),
@@ -94,11 +94,12 @@ class PublicAttendanceView(APIView):
 
         try:
             with transaction.atomic():
-                participant, _ = Participant.objects.get_or_create(
+                participant, created = Participant.objects.get_or_create(
                     event=event,
-                    identity_number=identity_number,
+                    nik=nik,
                     defaults={
-                        'identity_type': data['identity_type'],
+                        'nip': data.get('nip', ''),
+                        'is_asn': data.get('is_asn', False),
                         'full_name': data['full_name'],
                         'institution': data.get('institution', ''),
                         'position': data.get('position', ''),
@@ -107,15 +108,17 @@ class PublicAttendanceView(APIView):
                     },
                 )
 
-                # Update data yang masih kosong saja
-                update_fields = []
-                for fname in ('full_name', 'institution', 'position', 'phone', 'email'):
-                    new = data.get(fname)
-                    if new and not getattr(participant, fname):
-                        setattr(participant, fname, new)
-                        update_fields.append(fname)
-                if update_fields:
-                    participant.save(update_fields=update_fields)
+                if not created:
+                    # Update data yang masih kosong saja
+                    update_fields = []
+                    for fname in ('full_name', 'institution', 'position', 'phone', 'email',
+                                  'nip', 'is_asn'):
+                        new = data.get(fname)
+                        if new is not None and new != '' and not getattr(participant, fname):
+                            setattr(participant, fname, new)
+                            update_fields.append(fname)
+                    if update_fields:
+                        participant.save(update_fields=update_fields)
 
                 attendance = Attendance.objects.create(
                     event=event,
@@ -129,7 +132,7 @@ class PublicAttendanceView(APIView):
         except IntegrityError:
             # Race condition: request paralel dengan NIK sama, unique constraint trip
             return Response({
-                'detail': f'NIK/NIP {identity_number} sudah tercatat hadir pada kegiatan ini.',
+                'detail': f'NIK {nik} sudah tercatat hadir pada kegiatan ini.',
                 'code': 'already_attended',
             }, status=status.HTTP_409_CONFLICT)
 

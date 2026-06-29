@@ -16,5 +16,5 @@ class CertificateAdmin(admin.ModelAdmin):
     search_fields = (
         'certificate_number',
         'participant__full_name',
-        'participant__identity_number',
+        'participant__nik', 'participant__nip',
     )

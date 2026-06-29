@@ -169,7 +169,7 @@ export default function BulkUploadModal({ open, onClose, eventId, onUploaded }) 
           <div>
             <div className="font-semibold text-sm">Tambah peserta baru otomatis</div>
             <div className="text-xs text-slate-500">
-              Jika PDF mengandung NIK/NIP yang belum terdaftar di kegiatan ini,
+              Jika PDF mengandung NIK yang belum terdaftar di kegiatan ini,
               sistem akan membuat data pesertanya secara otomatis.
             </div>
           </div>
@@ -233,7 +233,7 @@ export default function BulkUploadModal({ open, onClose, eventId, onUploaded }) 
                               )}
                             </div>
                             <div className="text-xs text-slate-500 font-mono">
-                              {r.matched_participant.identity_number}
+                              {r.matched_participant.nik}
                             </div>
                           </div>
                         ) : (

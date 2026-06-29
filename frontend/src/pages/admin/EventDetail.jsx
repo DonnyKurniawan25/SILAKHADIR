@@ -260,7 +260,7 @@ function CertTab({ eventId, certs, onRefresh }) {
           <tr>
             <th>No. Sertifikat</th>
             <th>Nama Peserta</th>
-            <th>NIK/NIP</th>
+            <th>NIK</th>
             <th>Sumber</th>
             <th>Status</th>
             <th className="text-right pr-4">Tindakan</th>
@@ -271,7 +271,7 @@ function CertTab({ eventId, certs, onRefresh }) {
             <tr key={c.id}>
               <td className="font-mono text-xs">{c.certificate_number}</td>
               <td className="font-semibold">{c.participant_name}</td>
-              <td className="font-mono text-xs">{c.identity_number}</td>
+              <td className="font-mono text-xs">{c.nik}</td>
               <td>
                 {c.source === 'uploaded'
                   ? <span className="badge-blue">Unggah</span>

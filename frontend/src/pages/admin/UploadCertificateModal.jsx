@@ -11,6 +11,7 @@ export default function UploadCertificateModal({ open, onClose, eventId, onUploa
   const [mode, setMode] = useState('existing') // existing | new
   const [submitting, setSubmitting] = useState(false)
   const { register, handleSubmit, watch, reset } = useForm()
+  const isAsn = watch('is_asn')
 
   useEffect(() => {
     if (!open) return
@@ -44,17 +45,23 @@ export default function UploadCertificateModal({ open, onClose, eventId, onUploa
         payload.participantId = data.participant_id
       } else {
         payload.newParticipant = {
-          identity_type: data.identity_type,
-          identity_number: data.identity_number?.trim(),
+          nik: data.nik?.trim(),
+          nip: data.is_asn ? data.nip?.trim() : '',
+          is_asn: Boolean(data.is_asn),
           full_name: data.full_name?.trim(),
           institution: data.institution || '',
           position: data.position || '',
           phone: data.phone || '',
           email: data.email || '',
         }
-        if (!payload.newParticipant.identity_number || !payload.newParticipant.full_name) {
+        if (!payload.newParticipant.nik || !payload.newParticipant.full_name) {
           setSubmitting(false)
-          Swal.fire({ icon: 'warning', title: 'NIK/NIP dan Nama wajib diisi' })
+          Swal.fire({ icon: 'warning', title: 'NIK dan Nama wajib diisi' })
+          return
+        }
+        if (payload.newParticipant.is_asn && !payload.newParticipant.nip) {
+          setSubmitting(false)
+          Swal.fire({ icon: 'warning', title: 'NIP wajib diisi untuk ASN' })
           return
         }
       }
@@ -105,7 +112,7 @@ export default function UploadCertificateModal({ open, onClose, eventId, onUploa
               <option value="">-- Pilih peserta --</option>
               {participants.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.full_name} · {p.identity_number}
+                  {p.full_name} · {p.nik}
                 </option>
               ))}
             </select>
@@ -117,19 +124,25 @@ export default function UploadCertificateModal({ open, onClose, eventId, onUploa
           </div>
         ) : (
           <div className="space-y-3 p-3 border border-dashed border-brand-300 rounded-xl bg-brand-50/40">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid md:grid-cols-2 gap-3">
               <div>
-                <label className="label">Jenis</label>
-                <select className="input" defaultValue="NIK" {...register('identity_type')}>
-                  <option value="NIK">NIK</option>
-                  <option value="NIP">NIP</option>
-                </select>
+                <label className="label">NIK *</label>
+                <input className="input" inputMode="numeric" maxLength={16} {...register('nik')} />
               </div>
-              <div className="col-span-2">
-                <label className="label">NIK / NIP *</label>
-                <input className="input" inputMode="numeric" {...register('identity_number')} />
+              <div>
+                <label className="label">Jenis Peserta</label>
+                <label className="flex items-center gap-2 h-10 px-3 border border-slate-300 rounded bg-white text-sm">
+                  <input type="checkbox" {...register('is_asn')} />
+                  ASN
+                </label>
               </div>
             </div>
+            {isAsn && (
+              <div>
+                <label className="label">NIP *</label>
+                <input className="input" inputMode="numeric" maxLength={18} {...register('nip')} />
+              </div>
+            )}
             <div>
               <label className="label">Nama Lengkap *</label>
               <input className="input" {...register('full_name')} />

@@ -21,7 +21,7 @@ export default function CertificateList() {
       render: (c) => (
         <>
           <div className="font-semibold">{c.participant_name}</div>
-          <div className="text-xs text-ink-500 font-mono">{c.identity_number}</div>
+          <div className="text-xs text-ink-500 font-mono">{c.nik}</div>
         </>
       ),
     },

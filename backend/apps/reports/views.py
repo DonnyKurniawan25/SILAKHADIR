@@ -89,7 +89,8 @@ class EventReportViewSet(viewsets.ViewSet):
         for p in participants:
             att = p.attendances.first()
             item = {
-                'identity_number': p.identity_number,
+                'nik': p.nik,
+                'nip': p.nip,
                 'full_name': p.full_name,
                 'institution': p.institution,
                 'position': p.position,
@@ -115,7 +116,8 @@ class EventReportViewSet(viewsets.ViewSet):
         data = [{
             'certificate_number': c.certificate_number,
             'participant_name': c.participant.full_name,
-            'identity_number': c.participant.identity_number,
+            'nik': c.participant.nik,
+            'nip': c.participant.nip,
             'status': c.status,
             'generated_at': c.generated_at,
         } for c in certs]
@@ -131,13 +133,14 @@ class EventReportViewSet(viewsets.ViewSet):
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = 'Rekap'
-        ws.append(['No', 'Nama', 'NIK/NIP', 'Instansi', 'Jabatan',
+        ws.append(['No', 'Nama', 'NIK', 'NIP', 'ASN', 'Instansi', 'Jabatan',
                    'Status Hadir', 'Waktu Absen', 'No. Sertifikat'])
         for i, p in enumerate(event.participants.all(), start=1):
             att = p.attendances.first()
             cert = p.certificates.filter(event=event).first()
             ws.append([
-                i, p.full_name, p.identity_number, p.institution, p.position,
+                i, p.full_name, p.nik, p.nip, 'Ya' if p.is_asn else 'Tidak',
+                p.institution, p.position,
                 att.status if att else 'belum_hadir',
                 att.attendance_time.strftime('%Y-%m-%d %H:%M:%S') if att else '',
                 cert.certificate_number if cert else '',
@@ -170,9 +173,10 @@ class EventReportViewSet(viewsets.ViewSet):
         c.setFont('Helvetica-Bold', 9)
         c.drawString(20 * mm, y, 'No')
         c.drawString(30 * mm, y, 'Nama')
-        c.drawString(85 * mm, y, 'NIK/NIP')
-        c.drawString(120 * mm, y, 'Instansi')
-        c.drawString(170 * mm, y, 'Hadir')
+        c.drawString(75 * mm, y, 'NIK')
+        c.drawString(105 * mm, y, 'NIP')
+        c.drawString(135 * mm, y, 'Instansi')
+        c.drawString(175 * mm, y, 'Hadir')
         y -= 6 * mm
         c.setFont('Helvetica', 9)
 
@@ -183,9 +187,10 @@ class EventReportViewSet(viewsets.ViewSet):
             att = p.attendances.first()
             c.drawString(20 * mm, y, str(i))
             c.drawString(30 * mm, y, p.full_name[:30])
-            c.drawString(85 * mm, y, p.identity_number)
-            c.drawString(120 * mm, y, (p.institution or '')[:28])
-            c.drawString(170 * mm, y, 'Ya' if att and att.status == 'hadir' else 'Tidak')
+            c.drawString(75 * mm, y, p.nik)
+            c.drawString(105 * mm, y, p.nip or '-')
+            c.drawString(135 * mm, y, (p.institution or '')[:28])
+            c.drawString(175 * mm, y, 'Ya' if att and att.status == 'hadir' else 'Tidak')
             y -= 5 * mm
 
         c.showPage()

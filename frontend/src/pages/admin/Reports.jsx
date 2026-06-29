@@ -111,15 +111,16 @@ function ReportTable({ title, rows }) {
         {title} <span className="text-ink-500 font-sans font-normal">({rows.length})</span>
       </h3>
       <table className="table-base">
-        <thead><tr><th>Nama</th><th>NIK/NIP</th><th>Instansi</th></tr></thead>
+        <thead><tr><th>Nama</th><th>NIK</th><th>NIP</th><th>Instansi</th></tr></thead>
         <tbody>
           {rows.length === 0 && (
-            <tr><td colSpan={3} className="text-center py-6 text-ink-500">Tidak ada data</td></tr>
+            <tr><td colSpan={4} className="text-center py-6 text-ink-500">Tidak ada data</td></tr>
           )}
           {rows.map((r) => (
-            <tr key={r.identity_number}>
+            <tr key={r.nik}>
               <td className="font-semibold">{r.full_name}</td>
-              <td className="font-mono text-xs">{r.identity_number}</td>
+              <td className="font-mono text-xs">{r.nik}</td>
+              <td className="font-mono text-xs">{r.nip || '-'}</td>
               <td>{r.institution}</td>
             </tr>
           ))}

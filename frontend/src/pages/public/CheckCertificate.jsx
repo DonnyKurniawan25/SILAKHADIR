@@ -9,7 +9,7 @@ export default function CheckCertificate() {
 
   const onSubmit = async (data) => {
     try {
-      const { data: resp } = await checkCertificate(data.identity_number.trim())
+      const { data: resp } = await checkCertificate(data.nik.trim())
       setResult(resp)
     } catch {
       setResult({ found: false, message: 'Terjadi kesalahan. Silakan coba kembali.' })
@@ -27,18 +27,19 @@ export default function CheckCertificate() {
         <div className="eyebrow">Layanan Publik</div>
         <h1 className="section-title mt-1">Pengecekan Sertifikat Kegiatan</h1>
         <p className="text-ink-500 text-sm mt-1">
-          Masukkan Nomor Induk Kependudukan (NIK) atau Nomor Induk Pegawai (NIP) untuk memeriksa sertifikat yang tersedia.
+          Masukkan Nomor Induk Kependudukan (NIK) untuk memeriksa sertifikat yang tersedia.
         </p>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="card">
-        <label className="label">Nomor Identitas</label>
+        <label className="label">Nomor NIK</label>
         <div className="flex flex-col md:flex-row gap-2">
           <input
             className="input"
             inputMode="numeric"
             placeholder="Contoh: 5201012345678901"
-            {...register('identity_number', { required: true })}
+            maxLength={16}
+            {...register('nik', { required: true })}
           />
           <button type="submit" disabled={isSubmitting} className="btn-primary whitespace-nowrap">
             {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
@@ -58,7 +59,7 @@ export default function CheckCertificate() {
               <div>
                 <div className="font-semibold text-amber-900">Sertifikat belum tersedia</div>
                 <p className="text-sm text-amber-800 mt-1">
-                  {result.message || 'Data yang Anda masukkan tidak ditemukan, atau sertifikat untuk NIK/NIP tersebut belum diterbitkan.'}
+                  {result.message || 'Data yang Anda masukkan tidak ditemukan, atau sertifikat untuk NIK tersebut belum diterbitkan.'}
                 </p>
               </div>
             </div>

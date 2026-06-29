@@ -18,8 +18,8 @@ from .serializers import ParticipantSerializer
 class EventParticipantViewSet(viewsets.ModelViewSet):
     serializer_class = ParticipantSerializer
     permission_classes = [IsAuthenticatedStaff]
-    search_fields = ['full_name', 'identity_number', 'institution', 'email']
-    filterset_fields = ['identity_type']
+    search_fields = ['full_name', 'nik', 'nip', 'institution', 'email']
+    filterset_fields = ['is_asn']
 
     def get_queryset(self):
         event_id = self.kwargs.get('event_id')
@@ -48,7 +48,7 @@ class EventParticipantViewSet(viewsets.ModelViewSet):
             wb = openpyxl.load_workbook(file, data_only=True)
             ws = wb.active
             headers = [str(c.value or '').strip().lower() for c in ws[1]]
-            required = {'identity_type', 'identity_number', 'full_name'}
+            required = {'nik', 'full_name'}
             if not required.issubset(set(headers)):
                 return Response({
                     'detail': f'Header wajib: {", ".join(sorted(required))}',
@@ -57,20 +57,25 @@ class EventParticipantViewSet(viewsets.ModelViewSet):
             created, skipped, errors = 0, 0, []
             for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                 data = dict(zip(headers, row))
-                identity_number = str(data.get('identity_number') or '').strip()
-                if not identity_number:
+                nik = str(data.get('nik') or '').strip()
+                if not nik:
                     continue
                 exists = Participant.objects.filter(
-                    event=event, identity_number=identity_number
+                    event=event, nik=nik
                 ).exists()
                 if exists:
                     skipped += 1
                     continue
+                nip = str(data.get('nip') or '').strip()
+                is_asn = str(data.get('is_asn') or '').strip().lower() in ('true', '1', 'yes')
+                if not is_asn and nip:
+                    is_asn = True
                 try:
                     Participant.objects.create(
                         event=event,
-                        identity_type=(data.get('identity_type') or 'NIK').upper(),
-                        identity_number=identity_number,
+                        nik=nik,
+                        nip=nip,
+                        is_asn=is_asn,
                         full_name=data.get('full_name') or '',
                         institution=data.get('institution') or '',
                         position=data.get('position') or '',
@@ -94,14 +99,15 @@ class EventParticipantViewSet(viewsets.ModelViewSet):
         ws = wb.active
         ws.title = 'Peserta'
         ws.append([
-            'identity_type', 'identity_number', 'full_name', 'institution',
+            'nik', 'nip', 'is_asn', 'full_name', 'institution',
             'position', 'phone', 'email', 'attendance_status', 'attendance_time',
         ])
         for p in self.get_queryset():
             att = p.attendances.first()
             ws.append([
-                p.identity_type,
-                p.identity_number,
+                p.nik,
+                p.nip,
+                p.is_asn,
                 p.full_name,
                 p.institution,
                 p.position,

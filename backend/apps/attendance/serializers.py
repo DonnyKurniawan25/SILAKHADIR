@@ -29,8 +29,9 @@ class Base64ImageField(serializers.ImageField):
 class PublicAttendanceSerializer(serializers.Serializer):
     """Serializer untuk submit absensi publik dari peserta."""
 
-    identity_type = serializers.ChoiceField(choices=Participant.IdentityType.choices)
-    identity_number = serializers.CharField(max_length=32)
+    nik = serializers.CharField(max_length=16)
+    nip = serializers.CharField(max_length=18, allow_blank=True, required=False, default='')
+    is_asn = serializers.BooleanField(default=False)
     full_name = serializers.CharField(max_length=200)
     institution = serializers.CharField(max_length=200, allow_blank=True, required=False)
     position = serializers.CharField(max_length=150, allow_blank=True, required=False)
@@ -43,10 +44,22 @@ class PublicAttendanceSerializer(serializers.Serializer):
     captcha_token = serializers.CharField(required=True, write_only=True)
     captcha_answer = serializers.CharField(required=True, write_only=True)
 
-    def validate_identity_number(self, value):
+    def validate_nik(self, value):
         value = (value or '').strip()
         if not value.isdigit():
-            raise serializers.ValidationError('Nomor identitas harus berupa angka.')
+            raise serializers.ValidationError('NIK harus berupa angka.')
+        if len(value) != 16:
+            raise serializers.ValidationError('NIK harus 16 digit.')
+        return value
+
+    def validate_nip(self, value):
+        if not value:
+            return ''
+        value = value.strip()
+        if not value.isdigit():
+            raise serializers.ValidationError('NIP harus berupa angka.')
+        if len(value) != 18:
+            raise serializers.ValidationError('NIP harus 18 digit.')
         return value
 
     def validate(self, attrs):
@@ -56,12 +69,13 @@ class PublicAttendanceSerializer(serializers.Serializer):
             raise serializers.ValidationError({
                 'captcha': 'Jawaban verifikasi tidak sesuai. Muat ulang dan coba lagi.',
             })
-        itype = attrs['identity_type']
-        number = attrs['identity_number']
-        if itype == Participant.IdentityType.NIK and len(number) < 16:
-            raise serializers.ValidationError({'identity_number': 'NIK minimal 16 digit.'})
-        if itype == Participant.IdentityType.NIP and len(number) < 18:
-            raise serializers.ValidationError({'identity_number': 'NIP minimal 18 digit.'})
+        is_asn = attrs.get('is_asn', False)
+        nip = attrs.get('nip', '')
+        if is_asn and not nip:
+            raise serializers.ValidationError({'nip': 'NIP wajib diisi untuk ASN.'})
+        if not is_asn and nip:
+            # Otomatis set is_asn=True jika NIP diisi
+            attrs['is_asn'] = True
         if not attrs.get('full_name', '').strip():
             raise serializers.ValidationError({'full_name': 'Nama wajib diisi.'})
         return attrs
@@ -69,12 +83,14 @@ class PublicAttendanceSerializer(serializers.Serializer):
 
 class AttendanceSerializer(serializers.ModelSerializer):
     participant_name = serializers.CharField(source='participant.full_name', read_only=True)
-    identity_number = serializers.CharField(source='participant.identity_number', read_only=True)
+    participant_nik = serializers.CharField(source='participant.nik', read_only=True)
+    participant_nip = serializers.CharField(source='participant.nip', read_only=True)
 
     class Meta:
         model = Attendance
         fields = (
-            'id', 'event', 'participant', 'participant_name', 'identity_number',
+            'id', 'event', 'participant', 'participant_name',
+            'participant_nik', 'participant_nip',
             'attendance_time', 'status', 'ip_address', 'user_agent',
             'signature', 'photo',
         )

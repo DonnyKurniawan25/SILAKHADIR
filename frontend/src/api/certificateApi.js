@@ -40,8 +40,8 @@ export const replaceCertificateFile = (eventId, certId, pdfFile) => {
   })
 }
 
-export const checkCertificate = (identityNumber, eventId) => {
-  const params = { identity_number: identityNumber }
+export const checkCertificate = (nik, eventId) => {
+  const params = { nik }
   if (eventId) params.event_id = eventId
   return api.get('/public/certificates/check/', { params })
 }

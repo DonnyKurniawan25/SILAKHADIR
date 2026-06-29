@@ -21,7 +21,7 @@ export default function LandingPage() {
   const steps = [
     { n: 1, title: 'Penyelenggara membuat kegiatan', desc: 'Admin memasukkan judul, jadwal, lokasi, dan penyelenggara kegiatan.' },
     { n: 2, title: 'Tautan absensi dibagikan', desc: 'Tautan atau poster QR diedarkan kepada peserta.' },
-    { n: 3, title: 'Peserta mengisi kehadiran', desc: 'Formulir diisi dengan NIK/NIP dan data diri.' },
+    { n: 3, title: 'Peserta mengisi kehadiran', desc: 'Formulir diisi dengan NIK, NIP khusus ASN, dan data diri.' },
     { n: 4, title: 'Sertifikat dikeluarkan', desc: 'Admin mengunggah sertifikat yang telah ditandatangani.' },
     { n: 5, title: 'Peserta mengunduh sertifikat', desc: 'Pengecekan dan unduhan dilakukan melalui laman publik.' },
   ]

@@ -50,10 +50,12 @@ export default function ParticipantList({ eventId }) {
         <div className="text-xs text-slate-500">{p.institution}</div>
       </>
     )},
-    { key: 'identity_number', title: 'NIK/NIP', render: (p) => (
+    { key: 'nik', title: 'NIK', render: (p) => (
+      <div className="font-mono text-xs">{p.nik}</div>
+    )},
+    { key: 'nip', title: 'NIP', render: (p) => (
       <div className="font-mono text-xs">
-        <div className="text-[10px] text-slate-400">{p.identity_type}</div>
-        {p.identity_number}
+        {p.nip || <span className="text-slate-400">—</span>}
       </div>
     )},
     { key: 'position', title: 'Jabatan' },
@@ -119,13 +121,15 @@ export default function ParticipantList({ eventId }) {
 }
 
 function ParticipantForm({ eventId, participant, onSaved }) {
-  const { register, handleSubmit, formState: { isSubmitting, errors } } = useForm({
-    defaultValues: participant || { identity_type: 'NIK' },
+  const { register, handleSubmit, formState: { isSubmitting, errors }, watch } = useForm({
+    defaultValues: participant || { is_asn: false, nip: '' },
   })
+  const isAsn = watch('is_asn')
   const onSubmit = async (data) => {
     try {
-      if (participant?.id) await updateParticipant(participant.id, data)
-      else await createParticipant(eventId, data)
+      const payload = { ...data, nip: data.is_asn ? data.nip : '' }
+      if (participant?.id) await updateParticipant(participant.id, payload)
+      else await createParticipant(eventId, payload)
       Swal.fire({ icon: 'success', title: 'Tersimpan', timer: 1200, showConfirmButton: false })
       onSaved?.()
     } catch (e) {
@@ -134,19 +138,47 @@ function ParticipantForm({ eventId, participant, onSaved }) {
   }
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid md:grid-cols-2 gap-3">
         <div>
-          <label className="label">Jenis</label>
-          <select className="input" {...register('identity_type')}>
-            <option value="NIK">NIK</option>
-            <option value="NIP">NIP</option>
-          </select>
+          <label className="label">NIK *</label>
+          <input
+            className="input"
+            inputMode="numeric"
+            maxLength={16}
+            {...register('nik', {
+              required: 'NIK wajib diisi',
+              pattern: { value: /^[0-9]+$/, message: 'Hanya angka' },
+              minLength: { value: 16, message: 'NIK harus 16 digit' },
+              maxLength: { value: 16, message: 'NIK harus 16 digit' },
+            })}
+          />
+          {errors.nik && <p className="text-xs text-rose-600 mt-1">{errors.nik.message}</p>}
         </div>
-        <div className="col-span-2">
-          <label className="label">NIK / NIP *</label>
-          <input className="input" {...register('identity_number', { required: true })} />
+        <div>
+          <label className="label">Jenis Peserta</label>
+          <label className="flex items-center gap-2 h-10 px-3 border border-slate-300 rounded bg-white text-sm">
+            <input type="checkbox" {...register('is_asn')} />
+            ASN
+          </label>
         </div>
       </div>
+      {isAsn && (
+        <div>
+          <label className="label">NIP *</label>
+          <input
+            className="input"
+            inputMode="numeric"
+            maxLength={18}
+            {...register('nip', {
+              required: 'NIP wajib diisi untuk ASN',
+              pattern: { value: /^[0-9]+$/, message: 'Hanya angka' },
+              minLength: { value: 18, message: 'NIP harus 18 digit' },
+              maxLength: { value: 18, message: 'NIP harus 18 digit' },
+            })}
+          />
+          {errors.nip && <p className="text-xs text-rose-600 mt-1">{errors.nip.message}</p>}
+        </div>
+      )}
       <div>
         <label className="label">Nama *</label>
         <input className="input" {...register('full_name', { required: true })} />

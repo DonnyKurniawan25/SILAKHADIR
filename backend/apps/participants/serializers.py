@@ -11,30 +11,50 @@ class ParticipantSerializer(serializers.ModelSerializer):
     class Meta:
         model = Participant
         fields = (
-            'id', 'event', 'identity_type', 'identity_number', 'full_name',
+            'id', 'event', 'nik', 'nip', 'is_asn', 'full_name',
             'institution', 'position', 'phone', 'email',
             'attendance_status', 'attendance_time', 'certificate_status',
             'created_at', 'updated_at',
         )
         read_only_fields = ('id', 'event', 'created_at', 'updated_at')
 
-    def validate_identity_number(self, value):
+    def validate_nik(self, value):
         value = (value or '').strip()
         if not value.isdigit():
-            raise serializers.ValidationError('Nomor identitas harus berupa angka.')
+            raise serializers.ValidationError('NIK harus berupa angka.')
+        if len(value) != 16:
+            raise serializers.ValidationError('NIK harus 16 digit.')
+        return value
+
+    def validate_nip(self, value):
+        if not value:
+            return value
+        value = value.strip()
+        if not value.isdigit():
+            raise serializers.ValidationError('NIP harus berupa angka.')
+        if len(value) != 18:
+            raise serializers.ValidationError('NIP harus 18 digit.')
         return value
 
     def validate(self, attrs):
-        itype = attrs.get('identity_type') or getattr(self.instance, 'identity_type', 'NIK')
-        number = attrs.get('identity_number') or getattr(self.instance, 'identity_number', '')
-        if itype == Participant.IdentityType.NIK and len(number) < 16:
+        if 'is_asn' in attrs:
+            is_asn = attrs['is_asn']
+        else:
+            is_asn = getattr(self.instance, 'is_asn', False)
+
+        if 'nip' in attrs:
+            nip = attrs['nip']
+        else:
+            nip = getattr(self.instance, 'nip', '')
+
+        if is_asn and not nip:
             raise serializers.ValidationError({
-                'identity_number': 'NIK minimal 16 digit.'
+                'nip': 'NIP wajib diisi untuk peserta ASN.'
             })
-        if itype == Participant.IdentityType.NIP and len(number) < 18:
-            raise serializers.ValidationError({
-                'identity_number': 'NIP minimal 18 digit.'
-            })
+        if not is_asn:
+            attrs['nip'] = ''
+        elif nip:
+            attrs['is_asn'] = True
         return attrs
 
     def _attendance(self, obj):

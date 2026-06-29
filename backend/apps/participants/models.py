@@ -7,23 +7,22 @@ from django.db import models
 class Participant(models.Model):
     """Peserta kegiatan."""
 
-    class IdentityType(models.TextChoices):
-        NIK = 'NIK', 'NIK'
-        NIP = 'NIP', 'NIP'
-
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     event = models.ForeignKey(
         'events.Event', on_delete=models.CASCADE, related_name='participants'
     )
 
-    identity_type = models.CharField(
-        max_length=3, choices=IdentityType.choices, default=IdentityType.NIK
+    nik = models.CharField(
+        max_length=16,
+        validators=[RegexValidator(r'^[0-9]{16}$', 'NIK harus 16 digit angka.')],
     )
-    identity_number = models.CharField(
-        max_length=32,
-        validators=[RegexValidator(r'^[0-9]{8,32}$', 'Angka saja, minimal 8 digit.')],
+    nip = models.CharField(
+        max_length=18,
+        blank=True,
+        validators=[RegexValidator(r'^[0-9]{18}$', 'NIP harus 18 digit angka.')],
     )
+    is_asn = models.BooleanField(default=False)
     full_name = models.CharField(max_length=200)
     institution = models.CharField(max_length=200, blank=True)
     position = models.CharField(max_length=150, blank=True)
@@ -37,10 +36,12 @@ class Participant(models.Model):
         ordering = ['-created_at']
         constraints = [
             models.UniqueConstraint(
-                fields=('event', 'identity_number'),
+                fields=('event', 'nik'),
                 name='unique_participant_per_event',
             )
         ]
 
     def __str__(self):
-        return f'{self.full_name} ({self.identity_number})'
+        if self.nip:
+            return f'{self.full_name} ({self.nik} / NIP: {self.nip})'
+        return f'{self.full_name} ({self.nik})'
