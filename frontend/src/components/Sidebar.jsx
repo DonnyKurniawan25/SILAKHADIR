@@ -7,16 +7,16 @@ import { useAuth } from '../context/AuthContext'
 import { useBranding } from '../context/BrandingContext'
 
 const MENU_MAIN = [
-  { to: '/admin', label: 'Dasbor', icon: LayoutDashboard, end: true },
-  { to: '/admin/kegiatan', label: 'Kegiatan', icon: Calendar, adminOnly: true },
-  { to: '/admin/sertifikat', label: 'Sertifikat', icon: Award },
-  { to: '/admin/laporan', label: 'Laporan', icon: FileText, adminOnly: true },
-  { to: '/admin/kinerja', label: 'Kinerja', icon: ClipboardList },
+  { to: '/panel', label: 'Dasbor', icon: LayoutDashboard, end: true },
+  { to: '/panel/kegiatan', label: 'Kegiatan', icon: Calendar, adminOnly: true },
+  { to: '/panel/sertifikat', label: 'Sertifikat', icon: Award },
+  { to: '/panel/laporan', label: 'Laporan', icon: FileText, adminOnly: true },
+  { to: '/panel/kinerja', label: 'Kinerja', icon: ClipboardList },
 ]
 
 const MENU_SYSTEM = [
-  { to: '/admin/pengguna', label: 'Pengguna', icon: Users, adminOnly: true },
-  { to: '/admin/pengaturan', label: 'Pengaturan', icon: Settings, adminOnly: true },
+  { to: '/panel/pengguna', label: 'Pengguna', icon: Users, adminOnly: true },
+  { to: '/panel/pengaturan', label: 'Pengaturan', icon: Settings, adminOnly: true },
 ]
 
 export default function Sidebar({ open, onClose }) {
@@ -107,7 +107,7 @@ export default function Sidebar({ open, onClose }) {
                 : 'Operator'}
             </div>
           </div>
-          <button onClick={() => { onClose(); navigate('/admin/profil') }}
+          <button onClick={() => { onClose(); navigate('/panel/profil') }}
                   className="w-full btn text-brand-700 hover:bg-brand-50 justify-start !px-2 mb-1">
             <User className="w-4 h-4" /> Edit Profil Saya
           </button>

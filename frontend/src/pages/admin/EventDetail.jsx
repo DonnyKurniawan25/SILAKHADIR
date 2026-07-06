@@ -66,7 +66,7 @@ export default function EventDetail() {
 
   return (
     <div className="space-y-5">
-      <Link to="/admin/kegiatan" className="text-sm text-ink-500 hover:text-brand-800 inline-flex items-center gap-1">
+      <Link to="/panel/kegiatan" className="text-sm text-ink-500 hover:text-brand-800 inline-flex items-center gap-1">
         <ArrowLeft className="w-4 h-4" /> Kembali ke Daftar Kegiatan
       </Link>
 
@@ -144,7 +144,7 @@ export default function EventDetail() {
                 <Download className="w-4 h-4" /> Unduh PNG
               </a>
               <Link
-                to={`/admin/kegiatan/${id}/qr-print`}
+                to={`/panel/kegiatan/${id}/qr-print`}
                 target="_blank"
                 className="btn-primary"
               >

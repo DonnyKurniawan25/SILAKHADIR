@@ -49,7 +49,7 @@ export default function KinerjaForm() {
       })
       .catch(() => {
         Swal.fire({ icon: 'error', title: 'Gagal memuat data periode' })
-        navigate('/admin/kinerja')
+        navigate('/panel/kinerja')
       })
       .finally(() => setLoadingData(false))
   }, [editId, reset, navigate])
@@ -72,7 +72,7 @@ export default function KinerjaForm() {
         timer: 1400,
         showConfirmButton: false,
       })
-      navigate('/admin/kinerja')
+      navigate('/panel/kinerja')
     } catch (e) {
       const msg = e?.response?.data
       Swal.fire({
@@ -96,7 +96,7 @@ export default function KinerjaForm() {
       {/* Header */}
       <div>
         <button
-          onClick={() => navigate('/admin/kinerja')}
+          onClick={() => navigate('/panel/kinerja')}
           className="btn text-ink-500 hover:text-ink-900 !px-0 mb-2"
         >
           <ArrowLeft className="w-4 h-4" /> Kembali

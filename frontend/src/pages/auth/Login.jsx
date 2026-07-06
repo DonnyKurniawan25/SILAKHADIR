@@ -27,7 +27,7 @@ export default function Login() {
         captchaToken: captcha.token,
         captchaAnswer: captcha.answer,
       })
-      navigate('/admin')
+      navigate('/panel')
     } catch (e) {
       const resp = e?.response?.data || {}
       const msg = resp.captcha?.[0]

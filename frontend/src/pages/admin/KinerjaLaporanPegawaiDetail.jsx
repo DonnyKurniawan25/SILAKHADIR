@@ -173,7 +173,7 @@ export default function KinerjaLaporanPegawaiDetail() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 no-print border-b border-slate-200 pb-4">
         <div>
           <button
-            onClick={() => navigate(isAdmin ? `/admin/kinerja/${id}/laporan` : `/admin/kinerja/${id}`)}
+            onClick={() => navigate(isAdmin ? `/panel/kinerja/${id}/laporan` : `/panel/kinerja/${id}`)}
             className="btn text-ink-500 hover:text-ink-900 !px-0 mb-2"
           >
             <ArrowLeft className="w-4 h-4" /> Kembali ke {isAdmin ? 'Rekap Laporan' : 'Kinerja'}

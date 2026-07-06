@@ -92,7 +92,7 @@ export default function KinerjaLaporan() {
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <button
-            onClick={() => navigate(`/admin/kinerja/${id}`)}
+            onClick={() => navigate(`/panel/kinerja/${id}`)}
             className="btn text-ink-500 hover:text-ink-900 !px-0 mb-2"
           >
             <ArrowLeft className="w-4 h-4" /> Kembali ke Detail
@@ -222,7 +222,7 @@ export default function KinerjaLaporan() {
                     <td>
                       <button
                         className="btn text-xs !px-2 !py-1 bg-brand-50 text-brand-700 hover:bg-brand-100"
-                        onClick={() => navigate(`/admin/kinerja/${id}/laporan/${l.nip_pegawai}`)}
+                        onClick={() => navigate(`/panel/kinerja/${id}/laporan/${l.nip_pegawai}`)}
                       >
                         Detail Laporan
                       </button>

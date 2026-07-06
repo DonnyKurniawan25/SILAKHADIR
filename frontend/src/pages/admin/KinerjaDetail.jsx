@@ -36,7 +36,7 @@ export default function KinerjaDetail() {
       setPeriode(data)
     } catch {
       Swal.fire({ icon: 'error', title: 'Periode tidak ditemukan' })
-      navigate('/admin/kinerja')
+      navigate('/panel/kinerja')
     }
   }, [id, navigate])
 
@@ -108,7 +108,7 @@ export default function KinerjaDetail() {
       {/* Header */}
       <div>
         <button
-          onClick={() => navigate('/admin/kinerja')}
+          onClick={() => navigate('/panel/kinerja')}
           className="btn text-ink-500 hover:text-ink-900 !px-0 mb-2"
         >
           <ArrowLeft className="w-4 h-4" /> Kembali
@@ -166,7 +166,7 @@ export default function KinerjaDetail() {
             </div>
           </div>
           <div className="card flex items-center gap-3 cursor-pointer hover:shadow-card-hover transition-shadow"
-               onClick={() => navigate(`/admin/kinerja/${id}/laporan`)}>
+               onClick={() => navigate(`/panel/kinerja/${id}/laporan`)}>
             <div className="w-10 h-10 rounded-lg bg-accent-50 text-accent-500 flex items-center justify-center">
               <BarChart3 className="w-5 h-5" />
             </div>
@@ -188,7 +188,7 @@ export default function KinerjaDetail() {
             </div>
           </div>
           <div className="card flex items-center gap-3 cursor-pointer hover:shadow-card-hover transition-shadow"
-               onClick={() => navigate(`/admin/kinerja/${id}/laporan/${user?.nip}`)}>
+               onClick={() => navigate(`/panel/kinerja/${id}/laporan/${user?.nip}`)}>
             <div className="w-10 h-10 rounded-lg bg-accent-50 text-accent-500 flex items-center justify-center">
               <BarChart3 className="w-5 h-5" />
             </div>

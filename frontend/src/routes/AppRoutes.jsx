@@ -47,7 +47,7 @@ export default function AppRoutes() {
 
       {/* Admin-only print pages (tanpa layout sidebar) */}
       <Route
-        path="/admin/kegiatan/:id/qr-print"
+        path="/panel/kegiatan/:id/qr-print"
         element={
           <ProtectedRoute>
             <QrPrintPage />
@@ -57,7 +57,7 @@ export default function AppRoutes() {
 
       {/* Admin */}
       <Route
-        path="/admin"
+        path="/panel"
         element={
           <ProtectedRoute>
             <AdminLayout />

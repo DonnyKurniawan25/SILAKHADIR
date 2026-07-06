@@ -40,7 +40,7 @@ export default function EventList() {
       key: 'title',
       title: 'Nama Kegiatan',
       render: (e) => (
-        <Link to={`/admin/kegiatan/${e.id}`} className="font-semibold text-brand-800 hover:underline">
+        <Link to={`/panel/kegiatan/${e.id}`} className="font-semibold text-brand-800 hover:underline">
           {e.title}
           <div className="text-xs text-ink-500 font-normal">{e.organizer || '-'}</div>
         </Link>

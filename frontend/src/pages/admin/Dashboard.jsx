@@ -69,7 +69,7 @@ export default function Dashboard() {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => navigate('/admin/profil')}
+                onClick={() => navigate('/panel/profil')}
                 className="btn text-xs bg-white/20 text-white hover:bg-white/30 border border-white/10 !py-1.5 !px-3 font-semibold flex items-center gap-1"
               >
                 <Pencil className="w-3.5 h-3.5" /> Edit Profil & Sandi
@@ -111,13 +111,13 @@ export default function Dashboard() {
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button
-                          onClick={() => navigate(`/admin/kinerja/${p.id}`)}
+                          onClick={() => navigate(`/panel/kinerja/${p.id}`)}
                           className="btn text-xs bg-brand-800 text-white hover:bg-brand-900 !py-1.5 !px-3 font-semibold"
                         >
                           Catat Kinerja
                         </button>
                         <button
-                          onClick={() => navigate(`/admin/kinerja/${p.id}/laporan/${user?.nip}`)}
+                          onClick={() => navigate(`/panel/kinerja/${p.id}/laporan/${user?.nip}`)}
                           className="btn text-xs bg-slate-200 text-ink-800 hover:bg-slate-300 !py-1.5 !px-3 font-semibold flex items-center gap-1"
                         >
                           <FileText className="w-3.5 h-3.5" /> Laporan A4
@@ -253,7 +253,7 @@ export default function Dashboard() {
             <div className="eyebrow">Arsip</div>
             <h3 className="font-serif font-bold text-ink-900 mt-0.5">Kegiatan Terbaru</h3>
           </div>
-          <Link to="/admin/kegiatan" className="text-sm text-brand-700 hover:underline">Lihat semua</Link>
+          <Link to="/panel/kegiatan" className="text-sm text-brand-700 hover:underline">Lihat semua</Link>
         </div>
         <table className="table-base">
           <thead>
@@ -269,7 +269,7 @@ export default function Dashboard() {
             {data.recent_events.map((e) => (
               <tr key={e.id}>
                 <td>
-                  <Link to={`/admin/kegiatan/${e.id}`} className="font-semibold text-brand-800 hover:underline">
+                  <Link to={`/panel/kegiatan/${e.id}`} className="font-semibold text-brand-800 hover:underline">
                     {e.title}
                   </Link>
                   <div className="text-xs text-ink-500">{e.organizer}</div>

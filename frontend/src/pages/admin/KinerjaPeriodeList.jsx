@@ -89,7 +89,7 @@ export default function KinerjaPeriodeList() {
         {isAdmin && (
           <button
             className="btn-primary"
-            onClick={() => navigate('/admin/kinerja/buat')}
+            onClick={() => navigate('/panel/kinerja/buat')}
           >
             <Plus className="w-4 h-4" /> Buat Periode
           </button>
@@ -135,7 +135,7 @@ export default function KinerjaPeriodeList() {
           {isAdmin && (
             <button
               className="btn-primary mt-4"
-              onClick={() => navigate('/admin/kinerja/buat')}
+              onClick={() => navigate('/panel/kinerja/buat')}
             >
               <Plus className="w-4 h-4" /> Buat Periode Pertama
             </button>
@@ -147,7 +147,7 @@ export default function KinerjaPeriodeList() {
             <div
               key={p.id}
               className="card-hover group cursor-pointer relative overflow-hidden"
-              onClick={() => navigate(`/admin/kinerja/${p.id}`)}
+              onClick={() => navigate(`/panel/kinerja/${p.id}`)}
             >
               {/* Status ribbon */}
               <div className={`absolute top-0 left-0 right-0 h-1 ${
@@ -206,7 +206,7 @@ export default function KinerjaPeriodeList() {
                     }
                   </button>
                   <button
-                    onClick={() => navigate(`/admin/kinerja/buat?edit=${p.id}`)}
+                    onClick={() => navigate(`/panel/kinerja/buat?edit=${p.id}`)}
                     className="btn text-xs !px-2 !py-1 text-ink-500 hover:bg-slate-100"
                   >
                     Edit
