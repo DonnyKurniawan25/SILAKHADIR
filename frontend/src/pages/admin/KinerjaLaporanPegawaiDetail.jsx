@@ -211,27 +211,31 @@ export default function KinerjaLaporanPegawaiDetail() {
         </div>
 
         {/* Info Pegawai */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm pt-2">
-          <div className="space-y-1">
-            <div className="grid grid-cols-3">
-              <span className="text-ink-500">Nama Pegawai</span>
-              <span className="col-span-2 font-semibold text-ink-950">: {reportData.nama_pegawai}</span>
-            </div>
-            <div className="grid grid-cols-3">
-              <span className="text-ink-500">NIP Pegawai</span>
-              <span className="col-span-2 font-mono font-semibold text-ink-950">: {reportData.nip_pegawai || '-'}</span>
-            </div>
-          </div>
-          <div className="space-y-1 col-span-1">
-            <div className="grid grid-cols-3">
-              <span className="text-ink-500">Jabatan</span>
-              <span className="col-span-2 text-ink-900">: {reportData.entries?.[0]?.jabatan_pegawai || reportData.entries?.[0]?.pegawai_detail?.jabatan || '-'}</span>
-            </div>
-            <div className="grid grid-cols-3">
-              <span className="text-ink-500">Instansi</span>
-              <span className="col-span-2 text-ink-900">: {reportData.entries?.[0]?.instansi_pegawai || '-'}</span>
-            </div>
-          </div>
+        <div className="text-sm pt-2">
+          <table className="w-full max-w-2xl border-none text-left">
+            <tbody>
+              <tr className="border-none">
+                <td className="w-28 py-1 font-medium text-ink-600 border-none">Nama Pegawai</td>
+                <td className="w-4 py-1 text-ink-950 border-none">:</td>
+                <td className="py-1 font-semibold text-ink-950 border-none">{reportData.nama_pegawai}</td>
+              </tr>
+              <tr className="border-none">
+                <td className="w-28 py-1 font-medium text-ink-600 border-none">NIP Pegawai</td>
+                <td className="w-4 py-1 text-ink-950 border-none">:</td>
+                <td className="py-1 font-mono font-semibold text-ink-950 border-none">{reportData.nip_pegawai || '-'}</td>
+              </tr>
+              <tr className="border-none">
+                <td className="w-28 py-1 font-medium text-ink-600 border-none">Jabatan</td>
+                <td className="w-4 py-1 text-ink-950 border-none">:</td>
+                <td className="py-1 font-medium text-ink-950 border-none">{reportData.entries?.[0]?.jabatan_pegawai || reportData.entries?.[0]?.pegawai_detail?.jabatan || '-'}</td>
+              </tr>
+              <tr className="border-none">
+                <td className="w-28 py-1 font-medium text-ink-600 border-none">Instansi</td>
+                <td className="w-4 py-1 text-ink-950 border-none">:</td>
+                <td className="py-1 font-medium text-ink-950 border-none">{reportData.entries?.[0]?.instansi_pegawai || '-'}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         {/* Tabel Kinerja */}
