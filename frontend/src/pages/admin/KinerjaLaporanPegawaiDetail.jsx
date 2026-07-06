@@ -40,6 +40,8 @@ export default function KinerjaLaporanPegawaiDetail() {
   const [kabidNama, setKabidNama] = useState('')
   const [kabidNip, setKabidNip] = useState('')
   const [savingKabid, setSavingKabid] = useState(false)
+  const [showPegawaiTtd, setShowPegawaiTtd] = useState(true)
+  const [showKabidTtd, setShowKabidTtd] = useState(true)
 
   useEffect(() => {
     if (periode) {
@@ -184,14 +186,12 @@ export default function KinerjaLaporanPegawaiDetail() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {isAdmin && (
-            <button
-              onClick={() => setShowKabidModal(true)}
-              className="btn bg-slate-100 hover:bg-slate-200 text-ink-800 flex items-center gap-1.5"
-            >
-              <Pencil className="w-4 h-4" /> Atur Kepala Bidang
-            </button>
-          )}
+          <button
+            onClick={() => setShowKabidModal(true)}
+            className="btn bg-slate-100 hover:bg-slate-200 text-ink-800 flex items-center gap-1.5"
+          >
+            <Pencil className="w-4 h-4" /> Atur Penandatanganan
+          </button>
           <button onClick={handlePrint} className="btn-primary">
             <Printer className="w-4 h-4" /> Cetak / Simpan PDF
           </button>
@@ -269,53 +269,59 @@ export default function KinerjaLaporanPegawaiDetail() {
         </div>
 
         {/* Tanda Tangan / Legalisasi Laporan */}
-        <div className="pt-12 text-sm">
-          <div className="flex justify-between items-start text-center">
-            {/* Tanda Tangan Atasan / Kepala Bidang */}
-            <div>
-              <div>
-                <p>Mengetahui,</p>
-                <p className="font-semibold">Kepala Bidang {periode.bidang}</p>
-              </div>
-              <div>
-                <br />
-                <br />
-                <br />
-                <p className="font-mono font-bold">{"${ttd_pengirim2}"}</p>
-                <br />
-                <br />
-                <br />
-              </div>
-              <div className="space-y-0.5">
-                <p className="font-bold underline">{periode.kepala_bidang_nama || '___________________________'}</p>
-                <p className="text-xs text-ink-500">
-                  NIP. {periode.kepala_bidang_nip || '.....................................'}
-                </p>
-              </div>
-            </div>
+        {(showKabidTtd || showPegawaiTtd) && (
+          <div className="pt-12 text-sm">
+            <div className="flex justify-between items-start text-center">
+              {/* Tanda Tangan Atasan / Kepala Bidang */}
+              {showKabidTtd ? (
+                <div>
+                  <div>
+                    <p>Mengetahui,</p>
+                    <p className="font-semibold">Kepala Bidang {periode.bidang}</p>
+                  </div>
+                  <div>
+                    <br />
+                    <br />
+                    <br />
+                    <p className="font-mono font-bold">{"${ttd_pengirim2}"}</p>
+                    <br />
+                    <br />
+                    <br />
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="font-bold underline">{periode.kepala_bidang_nama || '___________________________'}</p>
+                    <p className="text-xs text-ink-500">
+                      NIP. {periode.kepala_bidang_nip || '.....................................'}
+                    </p>
+                  </div>
+                </div>
+              ) : <div />}
 
-            {/* Tanda Tangan Pegawai Yang Melaporkan */}
-            <div>
-              <div>
-                <p>Giri Menang, {tanggalSekarang}</p>
-                <p className="font-semibold">Pegawai Yang Melaporkan</p>
-              </div>
-              <div>
-                <br />
-                <br />
-                <br />
-                <p className="font-mono font-bold">{"${ttd_pengirim1}"}</p>
-                <br />
-                <br />
-                <br />
-              </div>
-              <div className="space-y-0.5">
-                <p className="font-bold underline">{reportData.nama_pegawai}</p>
-                <p className="text-xs text-ink-500 font-mono">NIP. {reportData.nip_pegawai || '.....................................'}</p>
-              </div>
+              {/* Tanda Tangan Pegawai Yang Melaporkan */}
+              {showPegawaiTtd ? (
+                <div>
+                  <div>
+                    <p>Giri Menang, {tanggalSekarang}</p>
+                    <p className="font-semibold">Pegawai Yang Melaporkan</p>
+                  </div>
+                  <div>
+                    <br />
+                    <br />
+                    <br />
+                    <p className="font-mono font-bold">{"${ttd_pengirim1}"}</p>
+                    <br />
+                    <br />
+                    <br />
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="font-bold underline">{reportData.nama_pegawai}</p>
+                    <p className="text-xs text-ink-500 font-mono">NIP. {reportData.nip_pegawai || '.....................................'}</p>
+                  </div>
+                </div>
+              ) : <div />}
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Modal Edit Kepala Bidang (no-print) */}
@@ -323,38 +329,59 @@ export default function KinerjaLaporanPegawaiDetail() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 no-print" onClick={() => setShowKabidModal(false)}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <div className="sticky top-0 bg-white border-b border-slate-200 px-5 py-4 flex items-center justify-between">
-              <h3 className="font-bold text-ink-900">Atur Kepala Bidang (Atasan)</h3>
+              <h3 className="font-bold text-ink-900">Atur Penandatanganan</h3>
               <button onClick={() => setShowKabidModal(false)} className="text-ink-500 hover:text-ink-900 text-lg font-bold">
                 ✕
               </button>
             </div>
             <form onSubmit={handleSaveKabid} className="p-5 space-y-4">
               <div>
-                <label className="label">Nama Kepala Bidang *</label>
+                <label className="label">Nama Kepala Bidang (Atasan)</label>
                 <input
                   className="input"
-                  required
                   placeholder="e.g. Nama Atasan, M.Kom"
                   value={kabidNama}
                   onChange={(e) => setKabidNama(e.target.value)}
                 />
               </div>
               <div>
-                <label className="label">NIP Kepala Bidang *</label>
+                <label className="label">NIP Kepala Bidang (Atasan)</label>
                 <input
                   className="input"
-                  required
                   placeholder="e.g. 19801231..."
                   value={kabidNip}
                   onChange={(e) => setKabidNip(e.target.value)}
                 />
+              </div>
+              <div className="space-y-2 pt-1">
+                <label className="label">Tampilkan Kolom Tanda Tangan:</label>
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2 text-sm text-ink-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showPegawaiTtd}
+                      onChange={(e) => setShowPegawaiTtd(e.target.checked)}
+                      className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                    />
+                    Pegawai Yang Melaporkan (TTD 1 / {"${ttd_pengirim1}"})
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-ink-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showKabidTtd}
+                      onChange={(e) => setShowKabidTtd(e.target.checked)}
+                      className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                    />
+                    Kepala Bidang (TTD 2 / {"${ttd_pengirim2}"})
+                  </label>
+                </div>
               </div>
               <div className="flex gap-3 pt-3 border-t border-slate-200">
                 <button type="button" onClick={() => setShowKabidModal(false)} className="btn-outline flex-1">
                   Batal
                 </button>
                 <button type="submit" disabled={savingKabid} className="btn-primary flex-1">
-                  {savingKabid ? 'Menyimpan...' : 'Simpan'}
+                  {savingKabid ? 'Menyimpan...' : 'Simpan Detail Atasan'}
                 </button>
               </div>
             </form>
