@@ -86,8 +86,7 @@ class CertificateNumberFormatViewSet(viewsets.ModelViewSet):
 
 
 class CertificateViewSet(viewsets.ReadOnlyModelViewSet):
-    """Listing semua sertifikat oleh admin."""
-    queryset = Certificate.objects.select_related('event', 'participant')
+    """Listing semua sertifikat oleh admin/operator."""
     serializer_class = CertificateSerializer
     permission_classes = [IsAuthenticatedStaff]
     search_fields = [
@@ -98,6 +97,16 @@ class CertificateViewSet(viewsets.ReadOnlyModelViewSet):
         'event__title',
     ]
     filterset_fields = ['status', 'event', 'source']
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = Certificate.objects.select_related('event', 'participant')
+        if user.is_authenticated and user.is_operator():
+            if user.nip:
+                qs = qs.filter(Q(participant__nip=user.nip) | Q(participant__nik=user.nip))
+            else:
+                qs = qs.none()
+        return qs
 
 
 class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):

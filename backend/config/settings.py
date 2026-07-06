@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'apps.reports',
     'apps.settings_app',
     'apps.news',
+    'apps.kinerja',
 ]
 
 MIDDLEWARE = [

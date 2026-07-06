@@ -15,12 +15,14 @@ urlpatterns = [
     path('api/certificates/', include('apps.certificates.urls')),
     path('api/certificate-templates/', include('apps.templates_certificate.urls')),
     path('api/settings/', include('apps.settings_app.urls')),
+    path('api/kinerja/', include('apps.kinerja.urls')),
 
     # Public endpoints (no auth required)
     path('api/public/', include('apps.attendance.urls_public')),
     path('api/public/certificates/', include('apps.certificates.urls_public')),
     path('api/public/', include('apps.reports.urls_public')),
     path('api/public/news/', include('apps.news.urls')),
+    path('api/public/', include('apps.kinerja.urls_public')),
 ]
 
 if settings.DEBUG:

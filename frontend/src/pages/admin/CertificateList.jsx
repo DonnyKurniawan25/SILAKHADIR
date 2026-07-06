@@ -2,8 +2,11 @@ import { useEffect, useState } from 'react'
 import { Download, ShieldCheck } from 'lucide-react'
 import DataTable from '../../components/DataTable'
 import { listCertificates } from '../../api/certificateApi'
+import { useAuth } from '../../context/AuthContext'
 
 export default function CertificateList() {
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
   const [rows, setRows] = useState([])
 
   useEffect(() => {
@@ -51,10 +54,12 @@ export default function CertificateList() {
   return (
     <div className="space-y-4">
       <div className="border-b border-slate-200 pb-3">
-        <div className="eyebrow">Arsip</div>
-        <h1 className="section-title mt-1">Daftar Sertifikat</h1>
+        <div className="eyebrow">{isAdmin ? 'Arsip' : 'Sertifikasi'}</div>
+        <h1 className="section-title mt-1">{isAdmin ? 'Daftar Sertifikat' : 'Sertifikat Saya'}</h1>
         <p className="text-ink-500 text-sm mt-1">
-          Seluruh sertifikat yang pernah diterbitkan oleh sistem.
+          {isAdmin
+            ? 'Seluruh sertifikat yang pernah diterbitkan oleh sistem.'
+            : 'Daftar sertifikat kegiatan yang Anda ikuti.'}
         </p>
       </div>
       <DataTable rows={rows} columns={columns} />

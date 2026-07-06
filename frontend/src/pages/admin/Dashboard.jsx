@@ -3,20 +3,182 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, CartesianGrid,
 } from 'recharts'
-import { Calendar, Users2, CheckCircle2, Award } from 'lucide-react'
+import { Calendar, Users2, CheckCircle2, Award, ClipboardList, FileText, Download, User, Pencil } from 'lucide-react'
 import Loading from '../../components/Loading'
 import { dashboardStats } from '../../api/eventApi'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../../context/AuthContext'
+import { listPeriodes } from '../../api/kinerjaApi'
+import { checkCertificate } from '../../api/certificateApi'
 
 const COLORS = ['#0f2440', '#caa02f', '#b91c1c', '#5b6472']
 
 export default function Dashboard() {
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
+
   const [data, setData] = useState(null)
+  const [periodes, setPeriodes] = useState([])
+  const [certs, setCerts] = useState([])
+  const [loadingCerts, setLoadingCerts] = useState(false)
 
   useEffect(() => {
-    dashboardStats().then((r) => setData(r.data)).catch(() => setData(null))
-  }, [])
+    if (isAdmin) {
+      dashboardStats().then((r) => setData(r.data)).catch(() => setData(null))
+    } else {
+      // Operator (pegawai)
+      listPeriodes({ page_size: 20 })
+        .then((r) => setPeriodes(r.data.results || r.data))
+        .catch(() => {})
 
+      if (user?.nip) {
+        setLoadingCerts(true)
+        checkCertificate(user.nip)
+          .then((r) => {
+            if (r.data.found) {
+              setCerts(r.data.results || [])
+            }
+          })
+          .catch(() => {})
+          .finally(() => setLoadingCerts(false))
+      }
+    }
+  }, [isAdmin, user?.nip])
+
+  // RENDER UNTUK PEGAWAI / OPERATOR
+  if (!isAdmin) {
+    return (
+      <div className="space-y-6">
+        {/* Welcome Header Profile */}
+        <div className="border border-slate-200 rounded bg-white shadow-card overflow-hidden">
+          <div className="p-6 bg-brand-900 text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center text-white border border-white/20">
+                <User className="w-8 h-8" />
+              </div>
+              <div>
+                <div className="eyebrow text-gold-400 font-bold uppercase tracking-wider text-xs">Akun Pegawai</div>
+                <h1 className="font-serif font-bold text-2xl tracking-tight">
+                  {user?.first_name || user?.username}
+                </h1>
+                <p className="text-sm text-slate-300 mt-1">
+                  NIP: <span className="font-mono">{user?.nip || '-'}</span> | Jabatan: {user?.jabatan || '-'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate('/admin/profil')}
+                className="btn text-xs bg-white/20 text-white hover:bg-white/30 border border-white/10 !py-1.5 !px-3 font-semibold flex items-center gap-1"
+              >
+                <Pencil className="w-3.5 h-3.5" /> Edit Profil & Sandi
+              </button>
+              <span className="badge badge-yellow">Pegawai Aktif</span>
+            </div>
+          </div>
+          <div className="gov-divider" />
+        </div>
+
+        <div className="grid lg:grid-cols-2 gap-6">
+          {/* Kolom Kinerja */}
+          <div className="card space-y-4">
+            <div className="border-b border-slate-100 pb-3">
+              <div className="eyebrow">Pencatatan</div>
+              <h2 className="font-serif font-bold text-lg text-ink-900 flex items-center gap-1.5 mt-0.5">
+                <ClipboardList className="w-5 h-5 text-brand-700" /> Kinerja Harian Periode Aktif
+              </h2>
+              <p className="text-xs text-ink-500 mt-1">
+                Pilih periode untuk mencatat kinerja Anda sendiri atau mencetak laporan.
+              </p>
+            </div>
+
+            {periodes.length === 0 ? (
+              <div className="text-center py-6 text-ink-400 text-sm">
+                Belum ada periode kinerja yang tersedia.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {periodes.map((p) => {
+                  const isClosed = p.status === 'ditutup'
+                  return (
+                    <div key={p.id} className="p-4 border border-slate-200 rounded bg-slate-50 hover:bg-slate-100/50 transition flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                      <div>
+                        <div className="font-bold text-ink-900 text-sm">{p.nama}</div>
+                        <div className="text-xs text-ink-500 mt-0.5">
+                          Bidang: {p.bidang} — {isClosed ? 'Ditutup' : 'Aktif'}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => navigate(`/admin/kinerja/${p.id}`)}
+                          className="btn text-xs bg-brand-800 text-white hover:bg-brand-900 !py-1.5 !px-3 font-semibold"
+                        >
+                          Catat Kinerja
+                        </button>
+                        <button
+                          onClick={() => navigate(`/admin/kinerja/${p.id}/laporan/${user?.nip}`)}
+                          className="btn text-xs bg-slate-200 text-ink-800 hover:bg-slate-300 !py-1.5 !px-3 font-semibold flex items-center gap-1"
+                        >
+                          <FileText className="w-3.5 h-3.5" /> Laporan A4
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Kolom Sertifikat */}
+          <div className="card space-y-4">
+            <div className="border-b border-slate-100 pb-3">
+              <div className="eyebrow">Sertifikasi</div>
+              <h2 className="font-serif font-bold text-lg text-ink-900 flex items-center gap-1.5 mt-0.5">
+                <Award className="w-5 h-5 text-brand-700" /> Sertifikat Kegiatan Saya
+              </h2>
+              <p className="text-xs text-ink-500 mt-1">
+                Daftar sertifikat digital dari kegiatan yang telah Anda ikuti dan selesaikan.
+              </p>
+            </div>
+
+            {loadingCerts ? (
+              <div className="flex items-center justify-center py-10">
+                <div className="animate-spin w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full" />
+              </div>
+            ) : certs.length === 0 ? (
+              <div className="text-center py-10 text-ink-400 text-sm border border-dashed border-slate-200 rounded">
+                <Award className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                Belum ada sertifikat terdaftar untuk NIP Anda.
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
+                {certs.map((c) => (
+                  <div key={c.id} className="p-4 border border-slate-200 rounded hover:shadow-sm transition flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-ink-900 text-sm truncate">{c.event_title}</div>
+                      <div className="text-[11px] text-ink-500 mt-0.5">
+                        No: <span className="font-mono">{c.certificate_number}</span>
+                      </div>
+                      <div className="text-[10px] text-ink-400">Penyelenggara: {c.organizer}</div>
+                    </div>
+                    <a
+                      href={c.download_url}
+                      className="btn text-xs bg-emerald-700 text-white hover:bg-emerald-800 !py-1.5 !px-3 font-semibold flex items-center gap-1 flex-shrink-0"
+                    >
+                      <Download className="w-3.5 h-3.5" /> Unduh
+                    </a>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // RENDER UNTUK ADMIN / SUPERADMIN
   if (!data) return <Loading />
 
   const pie = [

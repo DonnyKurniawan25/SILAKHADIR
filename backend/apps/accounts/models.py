@@ -15,6 +15,14 @@ class User(AbstractUser):
         choices=Role.choices,
         default=Role.OPERATOR,
     )
+    nip = models.CharField(
+        max_length=20, blank=True, null=True, unique=True,
+        help_text='Nomor Induk Pegawai (NIP) ASN.',
+    )
+    jabatan = models.CharField(
+        max_length=200, blank=True,
+        help_text='Jabatan pegawai.',
+    )
     phone = models.CharField(max_length=20, blank=True)
     institution = models.CharField(max_length=200, blank=True)
 

@@ -18,6 +18,16 @@ import QrPrintPage from '../pages/admin/QrPrintPage'
 import CertificateList from '../pages/admin/CertificateList'
 import Reports from '../pages/admin/Reports'
 import Settings from '../pages/admin/Settings'
+import KinerjaPeriodeList from '../pages/admin/KinerjaPeriodeList'
+import KinerjaForm from '../pages/admin/KinerjaForm'
+import KinerjaDetail from '../pages/admin/KinerjaDetail'
+import KinerjaLaporan from '../pages/admin/KinerjaLaporan'
+import UserList from '../pages/admin/UserList'
+import Profile from '../pages/admin/Profile'
+
+import KinerjaFormPublic from '../pages/public/KinerjaFormPublic'
+
+import KinerjaLaporanPegawaiDetail from '../pages/admin/KinerjaLaporanPegawaiDetail'
 
 export default function AppRoutes() {
   return (
@@ -29,6 +39,7 @@ export default function AppRoutes() {
         <Route path="/verifikasi/:token" element={<VerifyCertificate />} />
         <Route path="/absensi/:slug" element={<AttendanceForm />} />
         <Route path="/absensi/:slug/sukses" element={<AttendanceSuccess />} />
+        <Route path="/kinerja/:slug" element={<KinerjaFormPublic />} />
       </Route>
 
       {/* Auth */}
@@ -58,6 +69,19 @@ export default function AppRoutes() {
         <Route path="kegiatan/:id" element={<EventDetail />} />
         <Route path="sertifikat" element={<CertificateList />} />
         <Route path="laporan" element={<Reports />} />
+        <Route path="kinerja" element={<KinerjaPeriodeList />} />
+        <Route path="kinerja/buat" element={<KinerjaForm />} />
+        <Route path="kinerja/:id" element={<KinerjaDetail />} />
+        <Route path="kinerja/:id/laporan" element={<KinerjaLaporan />} />
+        <Route path="kinerja/:id/laporan/:nip" element={<KinerjaLaporanPegawaiDetail />} />
+        <Route
+          path="pengguna"
+          element={
+            <ProtectedRoute roles={['admin', 'superadmin']}>
+              <UserList />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="pengaturan"
           element={
@@ -66,6 +90,7 @@ export default function AppRoutes() {
             </ProtectedRoute>
           }
         />
+        <Route path="profil" element={<Profile />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
