@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Printer, Download, Loader2, Pencil } from 'lucide-react'
+import { ArrowLeft, Printer, Download, Loader2, Pencil, CalendarDays } from 'lucide-react'
 import { getLaporan, getPeriode, updatePeriode } from '../../api/kinerjaApi'
 import Swal from 'sweetalert2'
 import { useAuth } from '../../context/AuthContext'
@@ -19,6 +19,7 @@ export default function KinerjaLaporanPegawaiDetail() {
   const [periode, setPeriode] = useState(null)
   const [reportData, setReportData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [filterTanggal, setFilterTanggal] = useState('')
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -111,6 +112,20 @@ export default function KinerjaLaporanPegawaiDetail() {
     year: 'numeric',
   })
 
+  // Tanggal unik dari entries untuk dropdown filter
+  const uniqueDates = useMemo(() => {
+    if (!reportData?.entries) return []
+    const dates = [...new Set(reportData.entries.map((e) => e.tanggal))]
+    return dates.sort()
+  }, [reportData])
+
+  // Filter entries berdasarkan tanggal yang dipilih
+  const filteredEntries = useMemo(() => {
+    if (!reportData?.entries) return []
+    if (!filterTanggal) return reportData.entries
+    return reportData.entries.filter((e) => e.tanggal === filterTanggal)
+  }, [reportData, filterTanggal])
+
   return (
     <div className="space-y-6">
       {/* CSS Khusus Cetak & Tampilan A4 */}
@@ -185,7 +200,22 @@ export default function KinerjaLaporanPegawaiDetail() {
             Cetak atau simpan laporan harian kinerja pegawai sebagai berkas fisik/PDF
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1">
+            <CalendarDays className="w-4 h-4 text-ink-400" />
+            <select
+              className="text-sm bg-transparent border-none focus:ring-0 text-ink-700 pr-6 cursor-pointer"
+              value={filterTanggal}
+              onChange={(e) => setFilterTanggal(e.target.value)}
+            >
+              <option value="">Semua Tanggal</option>
+              {uniqueDates.map((d) => (
+                <option key={d} value={d}>
+                  {new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </option>
+              ))}
+            </select>
+          </div>
           <button
             onClick={() => setShowKabidModal(true)}
             className="btn bg-slate-100 hover:bg-slate-200 text-ink-800 flex items-center gap-1.5"
@@ -250,7 +280,7 @@ export default function KinerjaLaporanPegawaiDetail() {
               </tr>
             </thead>
             <tbody>
-              {reportData.entries?.map((e, idx) => (
+              {filteredEntries.map((e, idx) => (
                 <tr key={e.id}>
                   <td className="border border-slate-900 p-2 text-center">{idx + 1}</td>
                   <td className="border border-slate-900 p-2 whitespace-nowrap">
