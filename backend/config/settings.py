@@ -173,7 +173,3 @@ CORS_ALLOW_CREDENTIALS = True
 # File upload
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
-
-# Google Drive Backup (untuk auto-backup kinerja harian)
-GDRIVE_CREDENTIALS_FILE = config('GDRIVE_CREDENTIALS_FILE', default='')
-GDRIVE_FOLDER_ID = config('GDRIVE_FOLDER_ID', default='')
