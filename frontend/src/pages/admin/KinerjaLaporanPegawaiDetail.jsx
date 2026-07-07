@@ -85,6 +85,19 @@ export default function KinerjaLaporanPegawaiDetail() {
     window.print()
   }
 
+  // Hooks must run before conditional returns to keep the hook order stable.
+  const uniqueDates = useMemo(() => {
+    if (!reportData?.entries) return []
+    const dates = [...new Set(reportData.entries.map((e) => e.tanggal))]
+    return dates.sort()
+  }, [reportData])
+
+  const filteredEntries = useMemo(() => {
+    if (!reportData?.entries) return []
+    if (!filterTanggal) return reportData.entries
+    return reportData.entries.filter((e) => e.tanggal === filterTanggal)
+  }, [reportData, filterTanggal])
+
   if (loading) {
     return (
       <div className="min-h-[50vh] flex items-center justify-center">
@@ -111,20 +124,6 @@ export default function KinerjaLaporanPegawaiDetail() {
     month: 'long',
     year: 'numeric',
   })
-
-  // Tanggal unik dari entries untuk dropdown filter
-  const uniqueDates = useMemo(() => {
-    if (!reportData?.entries) return []
-    const dates = [...new Set(reportData.entries.map((e) => e.tanggal))]
-    return dates.sort()
-  }, [reportData])
-
-  // Filter entries berdasarkan tanggal yang dipilih
-  const filteredEntries = useMemo(() => {
-    if (!reportData?.entries) return []
-    if (!filterTanggal) return reportData.entries
-    return reportData.entries.filter((e) => e.tanggal === filterTanggal)
-  }, [reportData, filterTanggal])
 
   return (
     <div className="space-y-6">
