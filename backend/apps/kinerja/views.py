@@ -99,6 +99,11 @@ class LaporanKinerjaView(APIView):
         if nip:
             entries = entries.filter(nip_pegawai=nip)
 
+        # Filter by tanggal if provided
+        tanggal = request.query_params.get('tanggal')
+        if tanggal:
+            entries = entries.filter(tanggal=tanggal)
+
         # Group by NIP pegawai
         nip_list = entries.order_by().values_list('nip_pegawai', flat=True).distinct()
 
@@ -144,6 +149,10 @@ class ExportLaporanView(APIView):
 
         if nip:
             entries = entries.filter(nip_pegawai=nip)
+
+        tanggal = request.query_params.get('tanggal')
+        if tanggal:
+            entries = entries.filter(tanggal=tanggal)
 
         return export_laporan_excel(periode, entries)
 

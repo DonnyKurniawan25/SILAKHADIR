@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Download, Search, Users, FileText,
@@ -24,19 +24,23 @@ export default function KinerjaLaporan() {
   const [nipFilter, setNipFilter] = useState('')
   const [searchNip, setSearchNip] = useState('')
   const [expandedPegawai, setExpandedPegawai] = useState({})
+  const [filterTanggal, setFilterTanggal] = useState('')
 
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
+      const params = {}
+      if (searchNip) params.nip = searchNip
+      if (filterTanggal) params.tanggal = filterTanggal
       const [periodeRes, laporanRes] = await Promise.all([
         getPeriode(id),
-        getLaporan(id, searchNip ? { nip: searchNip } : {}),
+        getLaporan(id, params),
       ])
       setPeriode(periodeRes.data)
       setLaporan(laporanRes.data.laporan || [])
     } catch { }
     setLoading(false)
-  }, [id, searchNip])
+  }, [id, searchNip, filterTanggal])
 
   useEffect(() => { loadData() }, [loadData])
 
@@ -57,9 +61,11 @@ export default function KinerjaLaporan() {
   }
 
   const handleExport = () => {
-    const url = exportLaporanUrl(id, searchNip || null)
+    const url = exportLaporanUrl(id, {
+      nip: searchNip || null,
+      tanggal: filterTanggal || null,
+    })
     const token = localStorage.getItem('silakhadir_access')
-    // Open export with auth token
     fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -103,9 +109,35 @@ export default function KinerjaLaporan() {
             {BULAN[periode.bulan]} {periode.tahun} — Bidang {periode.bidang}
           </p>
         </div>
-        <button className="btn-primary" onClick={handleExport}>
-          <Download className="w-4 h-4" /> Export Excel
-        </button>
+
+        {/* Tanggal Filter + Export */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1">
+            <CalendarDays className="w-4 h-4 text-ink-400" />
+            <select
+              className="text-sm bg-transparent border-none focus:ring-0 text-ink-700 pr-6 cursor-pointer"
+              value={filterTanggal}
+              onChange={(e) => setFilterTanggal(e.target.value)}
+            >
+              <option value="">Semua Tanggal</option>
+              {periode && Array.from(
+                { length: new Date(periode.tahun, periode.bulan, 0).getDate() },
+                (_, i) => {
+                  const day = i + 1
+                  const dateStr = `${periode.tahun}-${String(periode.bulan).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+                  return (
+                    <option key={dateStr} value={dateStr}>
+                      {day} {BULAN[periode.bulan]} {periode.tahun}
+                    </option>
+                  )
+                }
+              )}
+            </select>
+          </div>
+          <button className="btn-primary" onClick={handleExport}>
+            <Download className="w-4 h-4" /> Export Excel
+          </button>
+        </div>
       </div>
 
       {/* NIP Filter */}

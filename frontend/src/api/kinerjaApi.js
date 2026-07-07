@@ -18,9 +18,12 @@ export const deleteKinerja = (id) => api.delete(`/kinerja/entries/${id}/`)
 export const getLaporan = (periodeId, params) =>
   api.get(`/kinerja/periodes/${periodeId}/laporan/`, { params })
 
-export const exportLaporanUrl = (periodeId, nip) => {
+export const exportLaporanUrl = (periodeId, { nip, tanggal } = {}) => {
   let url = `${api.defaults.baseURL}/kinerja/periodes/${periodeId}/export/`
-  if (nip) url += `?nip=${nip}`
+  const params = []
+  if (nip) params.push(`nip=${nip}`)
+  if (tanggal) params.push(`tanggal=${tanggal}`)
+  if (params.length) url += `?${params.join('&')}`
   return url
 }
 
