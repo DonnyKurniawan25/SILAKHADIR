@@ -61,6 +61,10 @@ class KinerjaHarianViewSet(viewsets.ModelViewSet):
         periode_id = self.request.query_params.get('periode')
         if periode_id:
             qs = qs.filter(periode_id=periode_id)
+        # Non-admin users only see their own entries
+        user = self.request.user
+        if not (user.role in ('admin', 'superadmin') or user.is_superuser):
+            qs = qs.filter(pegawai=user)
         return qs
 
     def get_serializer_class(self):

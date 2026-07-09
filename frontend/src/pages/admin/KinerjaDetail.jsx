@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import {
   ArrowLeft, Plus, Pencil, Trash2, CalendarDays,
   FileText, Users, BarChart3, ClipboardList,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import Swal from 'sweetalert2'
 import { useAuth } from '../../context/AuthContext'
@@ -16,6 +17,8 @@ const BULAN = [
   '', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
 ]
+
+const PAGE_SIZE = 20
 
 export default function KinerjaDetail() {
   const { id } = useParams()
@@ -30,6 +33,10 @@ export default function KinerjaDetail() {
   const [showForm, setShowForm] = useState(false)
   const [editEntry, setEditEntry] = useState(null)
 
+  // Pagination
+  const [page, setPage] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
+
   const loadPeriode = useCallback(async () => {
     try {
       const { data } = await getPeriode(id)
@@ -40,17 +47,23 @@ export default function KinerjaDetail() {
     }
   }, [id, navigate])
 
-  const loadEntries = useCallback(async () => {
+  const loadEntries = useCallback(async (currentPage = 1) => {
     setLoading(true)
     try {
-      const params = { periode: id, page_size: 200 }
+      const params = { periode: id, page: currentPage, page_size: PAGE_SIZE }
       const { data } = await listKinerja(params)
-      setEntries(data.results || data)
+      if (data.results) {
+        setEntries(data.results)
+        setTotalCount(data.count || 0)
+      } else {
+        setEntries(data)
+        setTotalCount(data.length || 0)
+      }
     } catch { }
     setLoading(false)
   }, [id])
 
-  useEffect(() => { loadPeriode(); loadEntries() }, [loadPeriode, loadEntries])
+  useEffect(() => { loadPeriode(); loadEntries(1) }, [loadPeriode, loadEntries])
 
   useEffect(() => {
     if (user) {
@@ -58,8 +71,11 @@ export default function KinerjaDetail() {
     }
   }, [user])
 
-  const myEntries = entries.filter((e) => e.pegawai === user?.id || (user?.nip && e.nip_pegawai === user?.nip))
+  // For admin: need all entries for "Semua" tab with pagination
+  // For non-admin: backend already filters to user's own entries
+  const myEntries = entries
   const displayEntries = tab === 'saya' ? myEntries : entries
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
 
   const handleDelete = async (entryId) => {
     const r = await Swal.fire({
@@ -75,7 +91,8 @@ export default function KinerjaDetail() {
     try {
       await deleteKinerja(entryId)
       Swal.fire({ icon: 'success', title: 'Terhapus', timer: 1200, showConfirmButton: false })
-      loadEntries()
+      loadEntries(page)
+      loadPeriode()
     } catch {
       Swal.fire({ icon: 'error', title: 'Gagal menghapus' })
     }
@@ -89,8 +106,14 @@ export default function KinerjaDetail() {
   const handleFormSaved = () => {
     setShowForm(false)
     setEditEntry(null)
-    loadEntries()
+    loadEntries(page)
     loadPeriode()
+  }
+
+  const goToPage = (p) => {
+    if (p < 1 || p > totalPages) return
+    setPage(p)
+    loadEntries(p)
   }
 
   if (!periode) {
@@ -183,7 +206,7 @@ export default function KinerjaDetail() {
               <ClipboardList className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-lg font-bold text-ink-900">{myEntries.length}</div>
+              <div className="text-lg font-bold text-ink-900">{totalCount}</div>
               <div className="text-xs text-ink-500">Kinerja Saya</div>
             </div>
           </div>
@@ -204,7 +227,7 @@ export default function KinerjaDetail() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         {isAdmin ? (
           <div>
-            <h3 className="font-serif font-bold text-ink-900 text-lg">Daftar Kinerja Pegawai</h3>
+            <h3 className="font-serif font-bold text-ink-900 text-lg">Daftar Kinerja Pegawai ({totalCount})</h3>
           </div>
         ) : (
           <div className="flex border-b border-slate-200">
@@ -216,7 +239,7 @@ export default function KinerjaDetail() {
               }`}
               onClick={() => setTab('saya')}
             >
-              Kinerja Saya ({myEntries.length})
+              Kinerja Saya ({totalCount})
             </button>
           </div>
         )}
@@ -270,7 +293,7 @@ export default function KinerjaDetail() {
               <tr>
                 <th>No</th>
                 <th>Tanggal</th>
-                {tab === 'semua' && <th>Pegawai</th>}
+                {isAdmin && tab === 'semua' && <th>Pegawai</th>}
                 <th>Uraian Kegiatan</th>
                 <th>Bukti</th>
                 <th>Aksi</th>
@@ -281,13 +304,13 @@ export default function KinerjaDetail() {
                 const canEdit = e.pegawai === user?.id || (user?.nip && e.nip_pegawai === user?.nip) || isAdmin
                 return (
                   <tr key={e.id}>
-                    <td className="text-center text-ink-500">{idx + 1}</td>
+                    <td className="text-center text-ink-500">{(page - 1) * PAGE_SIZE + idx + 1}</td>
                     <td className="whitespace-nowrap">
                       {new Date(e.tanggal).toLocaleDateString('id-ID', {
                         day: '2-digit', month: 'short', year: 'numeric',
                       })}
                     </td>
-                    {tab === 'semua' && (
+                    {isAdmin && tab === 'semua' && (
                       <td>
                         <div className="font-semibold text-ink-900 text-xs">
                           {e.nama_pegawai}
@@ -344,6 +367,56 @@ export default function KinerjaDetail() {
               })}
             </tbody>
           </table>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
+              <div className="text-xs text-ink-500">
+                Halaman {page} dari {totalPages} ({totalCount} data)
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => goToPage(page - 1)}
+                  disabled={page <= 1}
+                  className="p-1.5 rounded hover:bg-slate-100 text-ink-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                  let pageNum
+                  if (totalPages <= 7) {
+                    pageNum = i + 1
+                  } else if (page <= 4) {
+                    pageNum = i + 1
+                  } else if (page >= totalPages - 3) {
+                    pageNum = totalPages - 6 + i
+                  } else {
+                    pageNum = page - 3 + i
+                  }
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => goToPage(pageNum)}
+                      className={`w-8 h-8 rounded text-xs font-semibold transition-colors ${
+                        pageNum === page
+                          ? 'bg-brand-600 text-white'
+                          : 'hover:bg-slate-100 text-ink-700'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  )
+                })}
+                <button
+                  onClick={() => goToPage(page + 1)}
+                  disabled={page >= totalPages}
+                  className="p-1.5 rounded hover:bg-slate-100 text-ink-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
