@@ -43,6 +43,7 @@ export default function KinerjaLaporanPegawaiDetail() {
   const [savingKabid, setSavingKabid] = useState(false)
   const [showPegawaiTtd, setShowPegawaiTtd] = useState(true)
   const [showKabidTtd, setShowKabidTtd] = useState(true)
+  const [showNomorNaskah, setShowNomorNaskah] = useState(true)
 
   useEffect(() => {
     if (periode) {
@@ -216,6 +217,12 @@ export default function KinerjaLaporanPegawaiDetail() {
             </select>
           </div>
           <button
+            onClick={() => setShowNomorNaskah((v) => !v)}
+            className={`btn flex items-center gap-1.5 ${showNomorNaskah ? 'bg-brand-100 text-brand-800 hover:bg-brand-200' : 'bg-slate-100 text-ink-800 hover:bg-slate-200'}`}
+          >
+            {showNomorNaskah ? 'Sembunyikan Nomor Naskah' : 'Tampilkan Nomor Naskah'}
+          </button>
+          <button
             onClick={() => setShowKabidModal(true)}
             className="btn bg-slate-100 hover:bg-slate-200 text-ink-800 flex items-center gap-1.5"
           >
@@ -232,7 +239,9 @@ export default function KinerjaLaporanPegawaiDetail() {
         {/* Kop Laporan */}
         <div className="text-center space-y-1 pb-4 border-b-2 border-double border-slate-900">
           <h2 className="font-bold text-xl uppercase tracking-wide">LAPORAN KINERJA HARIAN PEGAWAI</h2>
-          <div className="text-sm font-mono font-bold mt-1">Nomor: {"${nomor_naskah}"}</div>
+          {showNomorNaskah && (
+            <div className="text-sm font-mono font-bold mt-1">Nomor: {"${nomor_naskah}"}</div>
+          )}
           <h3 className="font-semibold text-md text-ink-700">BIDANG {periode.bidang.toUpperCase()}</h3>
           <p className="text-sm text-ink-500">
             Bulan {BULAN[periode.bulan]} Tahun {periode.tahun}
