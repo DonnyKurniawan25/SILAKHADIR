@@ -54,6 +54,34 @@ class PeriodeKinerja(models.Model):
         help_text='Slug unik untuk link form publik pengisian kinerja.',
     )
 
+    # Integrasi Google Forms — Konfigurasi form harian (opsional, bisa diupdate setiap hari)
+    google_form_url = models.URLField(
+        max_length=500, blank=True, default='',
+        help_text='URL Google Form harian. Contoh: https://docs.google.com/forms/d/xxx/viewform',
+    )
+    # Entry ID untuk setiap field Google Form (format: entry.1234567890)
+    # Cara mendapatkan: klik kanan di preview form → View Page Source → cari "entry."
+    gform_entry_nama = models.CharField(
+        max_length=50, blank=True, default='',
+        help_text='Entry ID field Nama di Google Form. Contoh: entry.123456789',
+    )
+    gform_entry_nip = models.CharField(
+        max_length=50, blank=True, default='',
+        help_text='Entry ID field NIP di Google Form. Contoh: entry.987654321',
+    )
+    gform_entry_uraian = models.CharField(
+        max_length=50, blank=True, default='',
+        help_text='Entry ID field Uraian Kegiatan di Google Form. Contoh: entry.111222333',
+    )
+    gform_entry_link_bukti = models.CharField(
+        max_length=50, blank=True, default='',
+        help_text='Entry ID field Link Bukti Dukung di Google Form (opsional).',
+    )
+    gform_entry_tanggal = models.CharField(
+        max_length=50, blank=True, default='',
+        help_text='Entry ID field Tanggal di Google Form (opsional).',
+    )
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

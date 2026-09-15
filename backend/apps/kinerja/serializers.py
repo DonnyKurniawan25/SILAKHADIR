@@ -30,6 +30,9 @@ class PeriodeKinerjaSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'nama', 'bulan', 'tahun', 'bidang', 'deskripsi',
             'status', 'kepala_bidang_nama', 'kepala_bidang_nip', 'public_slug', 'form_url',
+            'google_form_url',
+            'gform_entry_nama', 'gform_entry_nip', 'gform_entry_uraian',
+            'gform_entry_link_bukti', 'gform_entry_tanggal',
             'created_by', 'created_by_name',
             'jumlah_entri', 'jumlah_pegawai',
             'created_at', 'updated_at',

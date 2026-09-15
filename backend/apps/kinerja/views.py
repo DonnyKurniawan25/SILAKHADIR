@@ -18,6 +18,7 @@ from .serializers import (
     PublicPeriodeInfoSerializer,
 )
 from .exports import export_laporan_excel
+from .google_forms import submit_to_google_form
 
 User = get_user_model()
 
@@ -73,7 +74,12 @@ class KinerjaHarianViewSet(viewsets.ModelViewSet):
         return KinerjaHarianSerializer
 
     def perform_create(self, serializer):
-        serializer.save(pegawai=self.request.user)
+        entry = serializer.save(pegawai=self.request.user)
+        # Kirim ke Google Form secara background (jika dikonfigurasi)
+        try:
+            submit_to_google_form(entry.periode, entry)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 class LaporanKinerjaView(APIView):
@@ -250,6 +256,12 @@ class PublicKinerjaSubmitView(APIView):
             link_bukti=data.get('link_bukti', ''),
             keterangan=data.get('keterangan', ''),
         )
+
+        # Kirim ke Google Form secara background (jika dikonfigurasi)
+        try:
+            submit_to_google_form(periode, entry)
+        except Exception:  # noqa: BLE001
+            pass
 
         return Response(
             {

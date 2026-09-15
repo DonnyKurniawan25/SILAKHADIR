@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   CalendarDays, Plus, Users, FileText, ChevronRight,
-  Lock, Unlock, Trash2, Search,
+  Lock, Unlock, Trash2, Search, ExternalLink,
 } from 'lucide-react'
 import Swal from 'sweetalert2'
 import { useAuth } from '../../context/AuthContext'
@@ -189,6 +189,15 @@ export default function KinerjaPeriodeList() {
                 <span className="flex items-center gap-1">
                   <Users className="w-3.5 h-3.5" /> {p.jumlah_pegawai} pegawai
                 </span>
+                {p.google_form_url ? (
+                  <span
+                    className="ml-auto flex items-center gap-1 text-blue-600 font-medium"
+                    title="Google Form terhubung"
+                    onClick={(e) => { e.stopPropagation(); window.open(p.google_form_url, '_blank') }}
+                  >
+                    <ExternalLink className="w-3 h-3" /> GForm
+                  </span>
+                ) : null}
               </div>
 
               {/* Admin actions */}
