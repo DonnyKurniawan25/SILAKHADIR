@@ -53,7 +53,13 @@ from .services import (
     generate_certificates_for_event,
     preview_certificate_number,
 )
-from .utils import generate_certificate_pdf, validate_uploaded_image
+from .utils import (
+    CERTIFICATE_LAYOUT_FIELDS,
+    certificate_layout,
+    generate_certificate_pdf,
+    suggest_certificate_layout,
+    validate_uploaded_image,
+)
 
 
 class CertificateNumberFormatViewSet(viewsets.ModelViewSet):
@@ -139,9 +145,33 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
             'regenerate': regenerate,
         })
 
-    @action(detail=False, methods=['post'], url_path='configure')
+    def _template_config(self, template, request):
+        if template is None:
+            layout = {
+                field: CertificateTemplate._meta.get_field(field).get_default()
+                for field in CERTIFICATE_LAYOUT_FIELDS
+            }
+            certificate_number = ''
+            template_url = signature_url = None
+        else:
+            layout = certificate_layout(template)
+            certificate_number = template.default_certificate_number
+            template_url = template.background_image.url if template.background_image else None
+            signature_url = template.signature_image.url if template.signature_image else None
+        return {
+            'template_id': template.id if template else None,
+            'template_image_url': request.build_absolute_uri(template_url) if template_url else None,
+            'signature_image_url': request.build_absolute_uri(signature_url) if signature_url else None,
+            'certificate_number': certificate_number,
+            'layout': layout,
+        }
+
+    @action(detail=False, methods=['get', 'post'], url_path='configure')
     def configure(self, request, event_id=None):
         event = get_object_or_404(Event, id=event_id)
+        template = event.certificate_template
+        if request.method == 'GET':
+            return Response(self._template_config(template, request))
         template_image = request.FILES.get('template_image')
         signature_image = request.FILES.get('signature_image')
         try:
@@ -149,7 +179,6 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
             validate_uploaded_image(signature_image)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        template = event.certificate_template
         if not template and not template_image:
             return Response({'detail': 'template_image wajib jika template belum ada.'}, status=status.HTTP_400_BAD_REQUEST)
         apply_all = str(request.data.get('apply_all', 'false')).lower() == 'true'
@@ -157,7 +186,7 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
         def layout_value(name, default, low=0, high=100):
             raw = request.data.get(name)
             if raw in (None, ''):
-                return default
+                return getattr(template, name, default)
             try:
                 return max(low, min(high, float(raw)))
             except (TypeError, ValueError):
@@ -166,6 +195,12 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
             layout = {
                 'name_position_x': layout_value('name_position_x', 50),
                 'name_position_y': layout_value('name_position_y', 45),
+                'event_position_x': layout_value('event_position_x', 50),
+                'event_position_y': layout_value('event_position_y', 58),
+                'date_position_x': layout_value('date_position_x', 50),
+                'date_position_y': layout_value('date_position_y', 70),
+                'qr_position_x': layout_value('qr_position_x', 10),
+                'qr_position_y': layout_value('qr_position_y', 85),
                 'number_position_x': layout_value('number_position_x', 50),
                 'number_position_y': layout_value('number_position_y', 30),
                 'signature_position_x': layout_value('signature_position_x', 82),
@@ -173,6 +208,8 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
                 'signature_width': layout_value('signature_width', 14, 1, 60),
                 'signature_height': layout_value('signature_height', 8, 1, 60),
                 'name_font_size': layout_value('name_font_size', 36, 8, 120),
+                'event_font_size': layout_value('event_font_size', 20, 8, 120),
+                'date_font_size': layout_value('date_font_size', 16, 8, 120),
                 'number_font_size': layout_value('number_font_size', 14, 8, 60),
             }
         except ValueError as exc:
@@ -198,7 +235,30 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
                     source=Certificate.Source.GENERATED,
                 ).update(certificate_number=certificate_number)
             generate_certificates_for_event(event, regenerate=True)
-        return Response({'template_id': template.id, 'certificate_number': template.default_certificate_number, 'apply_all': apply_all})
+        response = self._template_config(template, request)
+        response['apply_all'] = apply_all
+        return Response(response)
+
+    @action(detail=False, methods=['post'], url_path='suggest-layout')
+    def suggest_layout(self, request, event_id=None):
+        event = get_object_or_404(Event, id=event_id)
+        template = event.certificate_template
+        template_image = request.FILES.get('template_image')
+        if template_image:
+            try:
+                validate_uploaded_image(template_image)
+            except ValueError as exc:
+                return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            source = template_image
+        elif template and template.background_image:
+            source = template.background_image
+        else:
+            return Response({'detail': 'template_image wajib jika template belum ada.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            layout, confidence = suggest_certificate_layout(source)
+        except (OSError, ValueError) as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'layout': layout, 'method': 'image-analysis', 'confidence': confidence})
 
     @action(detail=True, methods=['post'], url_path='set-number', parser_classes=[JSONParser])
     def set_number(self, request, event_id=None, pk=None):

@@ -32,6 +32,18 @@ export const bulkUploadCertificates = (eventId, { files, dryRun = false, createM
   })
 }
 
+export const getEventCertificateConfig = (eventId, config = {}) =>
+  api.get(`/events/${eventId}/certificates/configure/`, config)
+
+export const suggestEventCertificateLayout = (eventId, templateImage) => {
+  const fd = new FormData()
+  if (templateImage) fd.append('template_image', templateImage)
+  return api.post(`/events/${eventId}/certificates/suggest-layout/`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 180000,
+  })
+}
+
 export const configureEventCertificate = (eventId, { templateImage, signatureImage, certificateNumber, applyAll = false, layout = {} }) => {
   const fd = new FormData()
   if (templateImage) fd.append('template_image', templateImage)

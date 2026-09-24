@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
   Calendar, MapPin, Building2, ArrowLeft, Copy, Check,
@@ -15,6 +15,7 @@ import EventReportTab from './EventReportTab'
 import { closeEvent, finishEvent, getEvent, getAttendanceLink } from '../../api/eventApi'
 import {
   listEventCertificates, replaceCertificateFile, configureEventCertificate,
+  getEventCertificateConfig, suggestEventCertificateLayout,
   setCertificateNumber,
 } from '../../api/certificateApi'
 
@@ -226,6 +227,12 @@ function TabBtn({ active, children, ...props }) {
   )
 }
 
+const DEFAULT_CERT_LAYOUT = {
+  name_position_x: 50, name_position_y: 45, number_position_x: 50, number_position_y: 30,
+  signature_position_x: 82, signature_position_y: 82, signature_width: 14, signature_height: 8,
+  name_font_size: 36, number_font_size: 14,
+}
+
 function CertTab({ eventId, certs, onRefresh }) {
   const [templateImage, setTemplateImage] = useState(null)
   const [signatureImage, setSignatureImage] = useState(null)
@@ -234,24 +241,95 @@ function CertTab({ eventId, certs, onRefresh }) {
   const [certificateNumber, setCertificateNumberValue] = useState('')
   const [applyAll, setApplyAll] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [layout, setLayout] = useState({ name_position_x: 50, name_position_y: 45, number_position_x: 50, number_position_y: 30, signature_position_x: 82, signature_position_y: 82, signature_width: 14, signature_height: 8 })
+  const [suggesting, setSuggesting] = useState(false)
+  const [loadingConfig, setLoadingConfig] = useState(true)
+  const [error, setError] = useState('')
+  const [suggestionNote, setSuggestionNote] = useState('')
+  const [layout, setLayout] = useState(DEFAULT_CERT_LAYOUT)
+  const [selected, setSelected] = useState('name')
+  const [templateRatio, setTemplateRatio] = useState(1.414)
+  const surfaceRef = useRef(null)
+  const requestId = useRef(0)
+  const objectUrls = useRef({ template: '', signature: '' })
 
-  const setFile = (file, setter, previewSetter) => { setter(file || null); previewSetter(file ? URL.createObjectURL(file) : '') }
-  const move = (key, event) => {
-    const surface = event.currentTarget.classList.contains('relative') ? event.currentTarget : event.currentTarget.parentElement
-    const rect = surface.getBoundingClientRect()
-    const x = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100))
-    const y = Math.max(0, Math.min(100, ((event.clientY - rect.top) / rect.height) * 100))
-    setLayout((old) => ({ ...old, [`${key}_position_x`]: Number(x.toFixed(2)), [`${key}_position_y`]: Number(y.toFixed(2)) }))
+  const setLayoutValue = (key, value) => setLayout((old) => ({ ...old, [key]: Number(value) }))
+  const loadConfig = useCallback(async (preserveLocalPreviews = false) => {
+    const id = ++requestId.current
+    setLoadingConfig(true)
+    try {
+      const response = await getEventCertificateConfig(eventId)
+      if (id !== requestId.current) return
+      const data = response.data || {}
+      setLayout((old) => ({ ...old, ...Object.fromEntries(Object.entries(DEFAULT_CERT_LAYOUT).map(([key, fallback]) => [key, Number(data.layout?.[key] ?? old[key] ?? fallback)])) }))
+      setCertificateNumberValue(data.certificate_number || '')
+      if (!preserveLocalPreviews || !objectUrls.current.template) setTemplatePreview(data.template_image_url || '')
+      if (!preserveLocalPreviews || !objectUrls.current.signature) setSignaturePreview(data.signature_image_url || '')
+      setError('')
+    } catch (err) {
+      if (id === requestId.current) setError(err?.response?.data?.detail || 'Konfigurasi sertifikat gagal dimuat.')
+    } finally {
+      if (id === requestId.current) setLoadingConfig(false)
+    }
+  }, [eventId])
+
+  useEffect(() => {
+    loadConfig()
+    return () => {
+      requestId.current += 1
+      Object.values(objectUrls.current).forEach((url) => url && URL.revokeObjectURL(url))
+    }
+  }, [loadConfig])
+
+  const setFile = (file, kind, setFileState, setPreview) => {
+    if (objectUrls.current[kind]) URL.revokeObjectURL(objectUrls.current[kind])
+    const url = file ? URL.createObjectURL(file) : ''
+    objectUrls.current[kind] = url
+    setFileState(file || null)
+    setPreview(url)
   }
+
+  const move = useCallback((key, clientX, clientY) => {
+    const surface = surfaceRef.current
+    if (!surface) return
+    const rect = surface.getBoundingClientRect()
+    const x = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100))
+    const y = Math.max(0, Math.min(100, ((clientY - rect.top) / rect.height) * 100))
+    setLayout((old) => ({ ...old, [`${key}_position_x`]: Number(x.toFixed(2)), [`${key}_position_y`]: Number(y.toFixed(2)) }))
+  }, [])
+
   const handleConfigure = async (e) => {
-    e.preventDefault(); setSaving(true)
+    e.preventDefault(); setSaving(true); setError('')
     try {
       await configureEventCertificate(eventId, { templateImage, signatureImage, certificateNumber: certificateNumber.trim(), applyAll, layout })
-      Swal.fire({ icon: 'success', title: 'Tata letak disimpan', text: 'Pratinjau sertifikat dibuat ulang.', timer: 1800, showConfirmButton: false }); onRefresh?.()
-    } catch (err) { Swal.fire({ icon: 'error', title: 'Gagal menyimpan', text: err?.response?.data?.detail || 'Terjadi kesalahan.' }) }
-    finally { setSaving(false) }
+      await loadConfig(true)
+      onRefresh?.()
+      Swal.fire({ icon: 'success', title: 'Tata letak disimpan', text: 'Pratinjau sertifikat dibuat ulang.', timer: 1800, showConfirmButton: false })
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Tata letak gagal disimpan.')
+      Swal.fire({ icon: 'error', title: 'Gagal menyimpan', text: err?.response?.data?.detail || 'Terjadi kesalahan.' })
+    } finally { setSaving(false) }
   }
+
+  const handleSuggest = async () => {
+    if (!templateImage && !templatePreview) { setError('Unggah template terlebih dahulu untuk menyarankan posisi otomatis.'); return }
+    setSuggesting(true); setError(''); setSuggestionNote('')
+    try {
+      const response = await suggestEventCertificateLayout(eventId, templateImage)
+      const suggestion = response.data || {}
+      if (suggestion.layout) setLayout((old) => ({ ...old, ...suggestion.layout }))
+      setSuggestionNote(`Saran awal dari analisis gambar${suggestion.confidence != null ? ` (keyakinan ${Math.round(Number(suggestion.confidence) * 100)}%)` : ''}. Periksa dan sesuaikan sebelum menyimpan; hasil tidak dijamin akurat.`)
+    } catch (err) { setError(err?.response?.data?.detail || 'Saran posisi otomatis gagal dibuat.')
+    } finally { setSuggesting(false) }
+  }
+
+  const handlePointerDown = (key, event) => {
+    event.preventDefault(); event.stopPropagation(); setSelected(key)
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    move(key, event.clientX, event.clientY)
+  }
+  const handlePointerMove = (key, event) => { if (event.currentTarget.hasPointerCapture?.(event.pointerId)) move(key, event.clientX, event.clientY) }
+  const handlePointerUp = (event) => { event.currentTarget.releasePointerCapture?.(event.pointerId) }
+
   const handleSetNumber = async (cert) => {
     const { value } = await Swal.fire({ title: 'Ubah nomor sertifikat', input: 'text', inputValue: cert.certificate_number || '', inputLabel: 'Nomor sertifikat peserta ini', showCancelButton: true, confirmButtonText: 'Simpan', cancelButtonText: 'Batal', inputValidator: (v) => !v?.trim() && 'Nomor wajib diisi' })
     if (!value?.trim()) return
@@ -267,27 +345,46 @@ function CertTab({ eventId, certs, onRefresh }) {
 
   return (
     <div className="space-y-4">
+      {error && <div role="alert" className="border border-red-200 bg-red-50 text-red-800 rounded p-3 text-sm">{error}</div>}
       <form onSubmit={handleConfigure} className="card space-y-4">
-        <div><div className="eyebrow">Editor tata letak sertifikat</div><h2 className="font-serif font-bold text-lg text-ink-900 mt-1">Atur nomor, nama, dan barcode tanda tangan</h2><p className="text-sm text-ink-500 mt-1">Unggah template lalu klik/geser area pratinjau. Posisi elemen disimpan dalam persen dari ukuran template.</p></div>
+        <div><div className="eyebrow">Editor tata letak sertifikat</div><h2 className="font-serif font-bold text-lg text-ink-900 mt-1">Atur nomor, nama, dan barcode tanda tangan</h2><p className="text-sm text-ink-500 mt-1">{loadingConfig ? 'Memuat konfigurasi tersimpan...' : 'Posisi memakai persen dari template, sehingga pratinjau dan PDF tetap sejajar.'}</p></div>
         <div className="grid md:grid-cols-2 gap-4">
-          <label className="label">Template sertifikat<input className="input mt-1" type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0], setTemplateImage, setTemplatePreview)} /></label>
-          <label className="label">Barcode/gambar tanda tangan<input className="input mt-1" type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0], setSignatureImage, setSignaturePreview)} /></label>
+          <label className="label">Template sertifikat<input className="input mt-1" type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0], 'template', setTemplateImage, setTemplatePreview)} /></label>
+          <label className="label">Barcode/gambar tanda tangan<input className="input mt-1" type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0], 'signature', setSignatureImage, setSignaturePreview)} /></label>
         </div>
-        <div className="grid md:grid-cols-3 gap-3"><label className="label">Ukuran nama (pt)<input className="input mt-1" type="number" min="8" max="120" value={layout.name_font_size || 36} onChange={(e) => setLayout({ ...layout, name_font_size: Number(e.target.value) })} /></label><label className="label">Ukuran nomor (pt)<input className="input mt-1" type="number" min="8" max="60" value={layout.number_font_size || 14} onChange={(e) => setLayout({ ...layout, number_font_size: Number(e.target.value) })} /></label><label className="label">Nomor bersama (opsional)<input className="input mt-1" value={certificateNumber} onChange={(e) => setCertificateNumberValue(e.target.value)} placeholder="Contoh: 001/SERT/2026" /></label></div>
-        <div className="border rounded-lg p-3 bg-slate-50"><p className="text-xs text-ink-500 mb-2">Klik posisi elemen pada gambar untuk memindahkan. Kotak berwarna adalah posisi isian.</p><div className="relative mx-auto overflow-hidden bg-white border" style={{ maxWidth: 760, aspectRatio: '1.414 / 1' }} onClick={(e) => { if (e.target === e.currentTarget) move('name', e) }}>
-          {templatePreview ? <img src={templatePreview} alt="Pratinjau template" className="absolute inset-0 w-full h-full object-fill pointer-events-none" /> : <div className="absolute inset-0 flex items-center justify-center text-sm text-ink-400">Unggah template untuk melihat pratinjau</div>}
-          <PreviewBox label="NAMA PESERTA" x={layout.name_position_x} y={layout.name_position_y} onClick={(e) => { e.stopPropagation(); move('name', e) }} />
-          <PreviewBox label="NOMOR SERTIFIKAT" x={layout.number_position_x} y={layout.number_position_y} onClick={(e) => { e.stopPropagation(); move('number', e) }} />
-          {signaturePreview && <img src={signaturePreview} alt="Barcode tanda tangan" className="absolute object-contain border-2 border-emerald-500 cursor-move" style={{ left: `${layout.signature_position_x}%`, top: `${layout.signature_position_y}%`, width: `${layout.signature_width}%`, height: `${layout.signature_height}%`, transform: 'translate(-50%, -50%)' }} onClick={(e) => { e.stopPropagation(); move('signature', e) }} />}
-        </div><div className="grid grid-cols-2 gap-3 mt-3"><label className="label">Lebar barcode (%)<input className="input mt-1" type="number" min="1" max="60" value={layout.signature_width} onChange={(e) => setLayout({ ...layout, signature_width: Number(e.target.value) })} /></label><label className="label">Tinggi barcode (%)<input className="input mt-1" type="number" min="1" max="60" value={layout.signature_height} onChange={(e) => setLayout({ ...layout, signature_height: Number(e.target.value) })} /></label></div></div>
+        <div className="flex flex-wrap gap-2 items-center"><button type="button" onClick={handleSuggest} disabled={suggesting || loadingConfig} className="btn-outline">{suggesting ? 'Menganalisis...' : 'Sarankan posisi otomatis'}</button>{suggestionNote && <span className="text-xs text-ink-500 max-w-xl">{suggestionNote}</span>}</div>
+        <div className="grid md:grid-cols-3 gap-3"><label className="label">Ukuran nama (pt)<input className="input mt-1" type="number" min="8" max="120" value={layout.name_font_size} onChange={(e) => setLayoutValue('name_font_size', e.target.value)} /></label><label className="label">Ukuran nomor/barcode (pt)<input className="input mt-1" type="number" min="8" max="60" value={layout.number_font_size} onChange={(e) => setLayoutValue('number_font_size', e.target.value)} /></label><label className="label">Nomor bersama (opsional)<input className="input mt-1" value={certificateNumber} onChange={(e) => setCertificateNumberValue(e.target.value)} placeholder="Contoh: 001/SERT/2026" /></label></div>
+        <div className="border rounded-lg p-3 bg-slate-50"><p className="text-xs text-ink-500 mb-2">Pilih lalu geser elemen dengan pointer. Klik latar tidak memindahkan nama.</p><div ref={surfaceRef} className="relative mx-auto overflow-hidden bg-white border" style={{ maxWidth: 760, aspectRatio: `${templateRatio} / 1` }}>
+          {templatePreview ? <img src={templatePreview} alt="Pratinjau template" onLoad={(e) => e.currentTarget.naturalHeight && setTemplateRatio(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight)} className="absolute inset-0 w-full h-full object-fill pointer-events-none" /> : <div className="absolute inset-0 flex items-center justify-center text-sm text-ink-400">Unggah template untuk melihat pratinjau</div>}
+          <PreviewBox label="NAMA PESERTA" x={layout.name_position_x} y={layout.name_position_y} selected={selected === 'name'} fontSize={layout.name_font_size} surfaceRef={surfaceRef} onPointerDown={(e) => handlePointerDown('name', e)} onPointerMove={(e) => handlePointerMove('name', e)} onPointerUp={handlePointerUp} />
+          <PreviewBox label="NOMOR SERTIFIKAT" x={layout.number_position_x} y={layout.number_position_y} selected={selected === 'number'} fontSize={layout.number_font_size} surfaceRef={surfaceRef} onPointerDown={(e) => handlePointerDown('number', e)} onPointerMove={(e) => handlePointerMove('number', e)} onPointerUp={handlePointerUp} />
+          {signaturePreview && <img src={signaturePreview} alt="Barcode tanda tangan" className={`absolute object-contain cursor-move ${selected === 'signature' ? 'border-2 border-emerald-600' : 'border border-emerald-400'}`} style={{ left: `${layout.signature_position_x}%`, top: `${layout.signature_position_y}%`, width: `${layout.signature_width}%`, height: `${layout.signature_height}%`, transform: 'translate(-50%, -50%)' }} onPointerDown={(e) => handlePointerDown('signature', e)} onPointerMove={(e) => handlePointerMove('signature', e)} onPointerUp={handlePointerUp} />}</div><div className="grid md:grid-cols-3 gap-3 mt-3"><PositionInput label="Nama X (%)" value={layout.name_position_x} onChange={(v) => setLayoutValue('name_position_x', v)} /><PositionInput label="Nama Y (%)" value={layout.name_position_y} onChange={(v) => setLayoutValue('name_position_y', v)} /><PositionInput label="Nomor X (%)" value={layout.number_position_x} onChange={(v) => setLayoutValue('number_position_x', v)} /><PositionInput label="Nomor Y (%)" value={layout.number_position_y} onChange={(v) => setLayoutValue('number_position_y', v)} /><PositionInput label="Tanda tangan X (%)" value={layout.signature_position_x} onChange={(v) => setLayoutValue('signature_position_x', v)} /><PositionInput label="Tanda tangan Y (%)" value={layout.signature_position_y} onChange={(v) => setLayoutValue('signature_position_y', v)} /><PositionInput label="Lebar tanda tangan (%)" value={layout.signature_width} onChange={(v) => setLayoutValue('signature_width', v)} /><PositionInput label="Tinggi tanda tangan (%)" value={layout.signature_height} onChange={(v) => setLayoutValue('signature_height', v)} /></div></div>
         <label className="flex items-center gap-2 text-sm text-ink-700"><input type="checkbox" checked={applyAll} onChange={(e) => setApplyAll(e.target.checked)} /> Terapkan nomor ke semua sertifikat</label>
-        <button type="submit" disabled={saving} className="btn-primary"><Save className="w-4 h-4" /> {saving ? 'Menyimpan...' : 'Simpan tata letak & buat pratinjau'}</button>
+        <button type="submit" disabled={saving || loadingConfig} className="btn-primary"><Save className="w-4 h-4" /> {saving ? 'Menyimpan...' : 'Simpan tata letak & buat pratinjau'}</button>
       </form>
-      {!certs.length ? <div className="border border-slate-200 rounded bg-white p-10 text-center"><Award className="w-10 h-10 text-ink-300 mx-auto mb-2" /><p className="text-ink-500">Belum ada sertifikat.</p></div> : <div className="card p-0 overflow-hidden"><table className="table-base"><thead><tr><th>No. Sertifikat</th><th>Nama Peserta</th><th>Status</th><th className="text-right pr-4">Tindakan</th></tr></thead><tbody>{certs.map((c) => <tr key={c.id}><td className="font-mono text-xs">{c.certificate_number || '-'}</td><td className="font-semibold">{c.participant_name}</td><td><span className={c.status === 'available' ? 'badge-green' : 'badge-yellow'}>{c.status || 'Memproses'}</span></td><td className="text-right pr-4"><button onClick={() => handleSetNumber(c)} className="btn-ghost !px-2 !py-1.5 text-xs"><Pencil className="w-3.5 h-3.5" /> Nomor</button> <button onClick={() => handleReplace(c)} className="btn-ghost !px-2 !py-1.5 text-xs"><RefreshCw className="w-3.5 h-3.5" /> PDF</button>{c.pdf_url && <a href={c.download_url || c.pdf_url} className="btn-primary !px-3 !py-1.5 text-xs ml-1">Unduh</a>}</td></tr>)}</tbody></table></div>}
+      {!certs.length ? <div className="border border-slate-200 rounded bg-white p-10 text-center"><Award className="w-10 h-10 text-ink-300 mx-auto mb-2" /><p className="text-ink-500">Belum ada sertifikat.</p></div> : <div className="card p-0 overflow-hidden"><table className="table-base"><thead><tr><th>No. Sertifikat</th><th>Nama Peserta</th><th>Status</th><th className="text-right pr-4">Tindakan</th></tr></thead><tbody>{certs.map((c) => <tr key={c.id}><td className="font-mono text-xs">{c.certificate_number || '-'}</td><td className="font-semibold">{c.participant_name}</td><td><span className={c.status === 'available' ? 'badge-green' : 'badge-yellow'}>{c.status || 'Memproses'}</span></td><td className="text-right pr-4"><button onClick={() => handleSetNumber(c)} className="btn-ghost !px-2 !py-1.5 text-xs"><Pencil className="w-3.5 h-3.5" /> Nomor</button> <button onClick={() => handleReplace(c)} className="btn-ghost !px-2 !py-1.5 text-xs"><RefreshCw className="w-3.5 h-3.5" /> PDF</button>{c.pdf_url && <><a href={c.pdf_url} target="_blank" rel="noreferrer" className="btn-ghost !px-2 !py-1.5 text-xs ml-1">Pratinjau PDF</a><a href={c.download_url || c.pdf_url} className="btn-primary !px-3 !py-1.5 text-xs ml-1">Unduh</a></>}</td></tr>)}</tbody></table></div>}
     </div>
   )
 }
 
-function PreviewBox({ label, x, y, onClick }) {
-  return <button type="button" className="absolute z-10 -translate-x-1/2 -translate-y-1/2 border-2 border-dashed border-brand-700 bg-white/75 px-2 py-1 text-[10px] font-bold text-brand-900 cursor-move" style={{ left: `${x}%`, top: `${y}%` }} onClick={onClick}>{label}</button>
+function PositionInput({ label, value, onChange }) {
+  return <label className="label">{label}<input className="input mt-1" type="number" step="0.01" min="0" max="100" value={value ?? 0} onChange={(e) => onChange(e.target.value)} /></label>
+}
+
+function PreviewBox({ label, x, y, selected, fontSize, surfaceRef, onPointerDown, onPointerMove, onPointerUp }) {
+  const [displaySize, setDisplaySize] = useState(10)
+  useEffect(() => {
+    const update = () => {
+      const surface = surfaceRef.current
+      if (!surface) return
+      const image = surface.querySelector('img[alt="Pratinjau template"]')
+      const nativeWidth = image?.naturalWidth || 0
+      const scale = nativeWidth ? surface.clientWidth / nativeWidth : 1
+      setDisplaySize(Math.max(8, Math.min(72, Number(fontSize || 12) * (96 / 72) * scale)))
+    }
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [fontSize, surfaceRef])
+  return <button type="button" className={`absolute z-10 -translate-x-1/2 -translate-y-1/2 border-2 border-dashed bg-white/75 px-2 py-1 font-bold cursor-move touch-none ${selected ? 'border-brand-700 text-brand-900' : 'border-slate-400 text-slate-700'}`} style={{ left: `${x}%`, top: `${y}%`, fontSize: `${displaySize}px` }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>{label}</button>
 }

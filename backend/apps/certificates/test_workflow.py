@@ -80,3 +80,64 @@ class CertificateWorkflowTests(TestCase):
         cert.refresh_from_db()
         self.assertEqual(cert.pdf_file.name, old_name)
         self.assertEqual(cert.source, Certificate.Source.UPLOADED)
+
+    def test_configure_persists_and_reads_layout(self):
+        response = self.client.post(self.url + 'configure/', {
+            'template_image': image(), 'signature_image': image('sig.png'),
+            'certificate_number': 'S-002', 'name_position_x': '21.5',
+            'name_position_y': '42.25', 'signature_width': '19',
+        }, format='multipart')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['layout']['name_position_x'], 21.5)
+        self.assertEqual(response.data['layout']['name_position_y'], 42.25)
+        get_response = self.client.get(self.url + 'configure/')
+        self.assertEqual(get_response.status_code, 200)
+        self.assertEqual(get_response.data['certificate_number'], 'S-002')
+        self.assertEqual(get_response.data['layout']['name_position_x'], 21.5)
+        self.assertTrue(get_response.data['template_image_url'])
+        self.assertTrue(get_response.data['signature_image_url'])
+
+    def test_configure_omitted_layout_values_preserve_saved_values(self):
+        template = CertificateTemplate.objects.create(
+            name='T', background_image=image('bg.png'),
+            name_position_x=12.5, name_position_y=33.5,
+        )
+        self.event.certificate_template = template
+        self.event.save(update_fields=['certificate_template'])
+        response = self.client.post(self.url + 'configure/', {
+            'certificate_number': 'S-003', 'signature_image': image('sig.png'),
+        }, format='multipart')
+        self.assertEqual(response.status_code, 200, response.data)
+        template.refresh_from_db()
+        self.assertEqual(template.name_position_x, 12.5)
+        self.assertEqual(template.name_position_y, 33.5)
+
+    def test_suggest_layout_uses_image_analysis_without_persisting(self):
+        template = CertificateTemplate.objects.create(
+            name='T', background_image=image('bg.png'), name_position_x=11,
+        )
+        self.event.certificate_template = template
+        self.event.save(update_fields=['certificate_template'])
+        response = self.client.post(self.url + 'suggest-layout/', format='multipart')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['method'], 'image-analysis')
+        self.assertIn('confidence', response.data)
+        self.assertTrue(0 <= response.data['confidence'] <= 1)
+        self.assertIn('name_position_x', response.data['layout'])
+        self.assertIn('event_position_x', response.data['layout'])
+        self.assertIn('date_position_x', response.data['layout'])
+        self.assertIn('qr_position_x', response.data['layout'])
+        template.refresh_from_db()
+        self.assertEqual(template.name_position_x, 11)
+
+    def test_suggest_layout_rejects_invalid_image(self):
+        response = self.client.post(self.url + 'suggest-layout/', {
+            'template_image': SimpleUploadedFile('bad.png', b'not-an-image', content_type='image/png'),
+        }, format='multipart')
+        self.assertEqual(response.status_code, 400)
+
+    def test_certificate_layout_endpoints_require_admin_permission(self):
+        operator = User.objects.create_user(username='operator', password='pass', role=User.Role.OPERATOR, nip='123')
+        self.client.force_authenticate(operator)
+        self.assertEqual(self.client.get(self.url + 'configure/').status_code, 403)
+        self.assertEqual(self.client.post(self.url + 'suggest-layout/', format='multipart').status_code, 403)

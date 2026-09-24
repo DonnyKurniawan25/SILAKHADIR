@@ -34,6 +34,76 @@ def validate_uploaded_image(upload, *, max_size=10 * 1024 * 1024):
         raise ValueError('File harus berupa gambar yang valid.') from exc
 
 
+CERTIFICATE_LAYOUT_FIELDS = (
+    'name_position_x', 'name_position_y', 'event_position_x', 'event_position_y',
+    'date_position_x', 'date_position_y', 'qr_position_x', 'qr_position_y',
+    'number_position_x', 'number_position_y', 'signature_position_x',
+    'signature_position_y', 'signature_width', 'signature_height',
+    'name_font_size', 'event_font_size', 'date_font_size', 'number_font_size',
+)
+
+
+def certificate_layout(template):
+    """Return every numeric layout field as JSON-safe numeric values."""
+    return {field: getattr(template, field) for field in CERTIFICATE_LAYOUT_FIELDS}
+
+
+def suggest_certificate_layout(image_file):
+    """Suggest a certificate layout from image ink/whitespace, without AI/network calls.
+
+    The image is reduced to row/column ink density. Large whitespace bands are
+    preferred for text, while the lower-right whitespace is preferred for a
+    signature. This deliberately remains a transparent heuristic.
+    """
+    image_file.seek(0)
+    with Image.open(image_file) as source:
+        image = source.convert('L')
+        width, height = image.size
+        if width < 20 or height < 20:
+            raise ValueError('Gambar terlalu kecil untuk dianalisis.')
+        # Keep analysis bounded for large uploads while retaining proportions.
+        image.thumbnail((400, 400), Image.Resampling.LANCZOS)
+        width, height = image.size
+        pixels = image.load()
+        row_density = [sum(pixels[x, y] < 220 for x in range(width)) / width for y in range(height)]
+        col_density = [sum(pixels[x, y] < 220 for y in range(height)) / height for x in range(width)]
+
+        def whitespace_center(start, end):
+            start, end = max(0, start), min(height, end)
+            if start >= end:
+                return (start + end) / 2
+            return min(range(start, end), key=lambda y: row_density[y])
+
+        # Text normally belongs in the broad middle of a landscape certificate.
+        name_y = whitespace_center(int(height * .34), int(height * .62))
+        number_y = whitespace_center(int(height * .14), int(height * .38))
+        # Use the clearest lower-right area for the signature anchor.
+        right_start = int(width * .62)
+        bottom_start = int(height * .65)
+        signature_x = min(range(right_start, width), key=lambda x: col_density[x])
+        signature_y = min(range(bottom_start, height), key=lambda y: row_density[y])
+        center_x = min(range(width), key=lambda x: col_density[x])
+
+        ink_ratio = sum(row_density) / height
+        confidence = round(max(.25, min(.95, .55 + min(ink_ratio, .45))), 2)
+        return {
+            'name_position_x': round(center_x / width * 100, 2),
+            'name_position_y': round(name_y / height * 100, 2),
+            'event_position_x': round(center_x / width * 100, 2),
+            'event_position_y': round(min(99, name_y / height * 100 + 13), 2),
+            'date_position_x': round(center_x / width * 100, 2),
+            'date_position_y': round(min(99, name_y / height * 100 + 25), 2),
+            'qr_position_x': 10.0, 'qr_position_y': 85.0,
+            'number_position_x': round(center_x / width * 100, 2),
+            'number_position_y': round(number_y / height * 100, 2),
+            'signature_position_x': round(signature_x / width * 100, 2),
+            'signature_position_y': round(signature_y / height * 100, 2),
+            'signature_width': 14.0, 'signature_height': 8.0,
+            'name_font_size': 36, 'event_font_size': 20,
+            'date_font_size': 16, 'number_font_size': 14,
+        }, confidence
+
+
 def _clean_event_title(title: str) -> str:
     clean = (title or 'EVENT').upper().replace(' ', '-')
     return clean[:30].strip('-')
