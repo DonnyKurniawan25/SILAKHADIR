@@ -597,7 +597,7 @@ class PublicDownloadCertificateView(APIView):
             raise Http404('File sertifikat tidak ditemukan.')
         return FileResponse(
             cert.pdf_file.open('rb'),
-            as_attachment=True,
+            as_attachment=False,
             filename=f'{cert.certificate_number.replace("/", "_")}.pdf',
             content_type='application/pdf',
         )

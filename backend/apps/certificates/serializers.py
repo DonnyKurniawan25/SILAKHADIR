@@ -56,18 +56,15 @@ class CertificateSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_download_url(self, obj):
-        return f'{settings.BACKEND_URL}/api/public/certificates/download/{obj.download_token}/'
+        return f'{settings.FRONTEND_URL.rstrip("/")}/api/public/certificates/download/{obj.download_token}/'
 
     def get_verify_url(self, obj):
         return f'{settings.FRONTEND_URL}/verifikasi/{obj.verification_token}'
 
     def get_pdf_url(self, obj):
         if obj.pdf_file:
-            request = self.context.get('request')
             url = obj.pdf_file.url
-            if request:
-                return request.build_absolute_uri(url)
-            return f'{settings.BACKEND_URL}{url}'
+            return f'{settings.FRONTEND_URL.rstrip("/")}/{url.lstrip("/")}'
         return None
 
 
@@ -90,7 +87,7 @@ class CertificatePublicSerializer(serializers.ModelSerializer):
         )
 
     def get_download_url(self, obj):
-        return f'{settings.BACKEND_URL}/api/public/certificates/download/{obj.download_token}/'
+        return f'{settings.FRONTEND_URL.rstrip("/")}/api/public/certificates/download/{obj.download_token}/'
 
     def get_verify_url(self, obj):
         return f'{settings.FRONTEND_URL}/verifikasi/{obj.verification_token}'
