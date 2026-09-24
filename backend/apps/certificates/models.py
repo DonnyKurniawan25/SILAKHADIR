@@ -82,7 +82,7 @@ class Certificate(models.Model):
         related_name='certificates',
     )
 
-    certificate_number = models.CharField(max_length=100)
+    certificate_number = models.CharField(max_length=100, blank=True, default='')
     number_format = models.ForeignKey(
         CertificateNumberFormat,
         on_delete=models.SET_NULL,

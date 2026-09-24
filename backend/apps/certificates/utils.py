@@ -20,6 +20,20 @@ ROMAN_MONTHS = [
 ]
 
 
+def validate_uploaded_image(upload, *, max_size=10 * 1024 * 1024):
+    if not upload:
+        return
+    if upload.size > max_size:
+        raise ValueError('Ukuran gambar maksimal 10MB.')
+    try:
+        upload.seek(0)
+        with Image.open(upload) as img:
+            img.verify()
+        upload.seek(0)
+    except Exception as exc:
+        raise ValueError('File harus berupa gambar yang valid.') from exc
+
+
 def _clean_event_title(title: str) -> str:
     clean = (title or 'EVENT').upper().replace(' ', '-')
     return clean[:30].strip('-')
@@ -130,12 +144,13 @@ def _format_date_range(start, end) -> str:
 def generate_certificate_pdf(certificate) -> ContentFile:
     """Generate PDF sertifikat untuk objek Certificate.
 
-    Jika template tersedia, gunakan koordinat dan background dari template.
-    Jika tidak, gunakan layout default (A4 landscape, warna biru pemerintahan).
+    Hanya gunakan background template admin; tanpa template tidak ada PDF.
     """
     event = certificate.event
     participant = certificate.participant
     template = event.certificate_template
+    if not template or not template.background_image:
+        return None
 
     page_size = landscape(A4)
     page_w, page_h = page_size
@@ -149,10 +164,7 @@ def generate_certificate_pdf(certificate) -> ContentFile:
             bg = ImageReader(template.background_image.path)
             c.drawImage(bg, 0, 0, width=page_w, height=page_h, preserveAspectRatio=False)
         except Exception:
-            _draw_default_background(c, page_w, page_h, event)
-    else:
-        _draw_default_background(c, page_w, page_h, event)
-
+            raise ValueError('Background template tidak dapat dibaca')
     # Helper untuk ambil posisi
     def pos(px, py):
         return _pct_to_xy(page_w, page_h, px, py)
@@ -164,7 +176,17 @@ def generate_certificate_pdf(certificate) -> ContentFile:
     )
     c.setFont('Helvetica', template.number_font_size if template else 14)
     c.setFillColorRGB(0.2, 0.2, 0.2)
-    c.drawCentredString(num_x, num_y, f'Nomor: {certificate.certificate_number}')
+    number = certificate.certificate_number or 'Menunggu nomor dari admin'
+    c.drawCentredString(num_x, num_y, f'Nomor: {number}')
+
+    if certificate.status == certificate.Status.PROCESSING:
+        c.saveState()
+        c.setFillColorRGB(0.75, 0.1, 0.1, alpha=0.28)
+        c.setFont('Helvetica-Bold', 42)
+        c.translate(page_w / 2, page_h / 2)
+        c.rotate(30)
+        c.drawCentredString(0, 0, 'BELUM DITANDATANGANI')
+        c.restoreState()
 
     # Nama peserta
     name_x, name_y = pos(
@@ -227,7 +249,7 @@ def generate_certificate_pdf(certificate) -> ContentFile:
             pass
 
         sig_y = page_h * 0.12
-        signature_path = template.signature_image.path if template.signature_image else global_signature
+        signature_path = template.signature_image.path if template.signature_image else None
         stamp_path = template.stamp_image.path if template.stamp_image else global_stamp
         if stamp_path:
             try:

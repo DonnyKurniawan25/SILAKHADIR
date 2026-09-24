@@ -29,7 +29,7 @@ export default function CertificateList() {
       ),
     },
     { key: 'event_title', title: 'Kegiatan' },
-    { key: 'status', title: 'Status', render: (c) => <span className="badge-green">{c.status}</span> },
+    { key: 'status', title: 'Status', render: (c) => <span className={c.pdf_url ? 'badge-green' : 'badge-yellow'}>{c.pdf_url ? (c.status || 'Tersedia') : 'Memproses'}</span> },
     {
       key: 'generated_at', title: 'Diterbitkan',
       render: (c) => new Date(c.generated_at).toLocaleDateString('id-ID', {
@@ -43,9 +43,13 @@ export default function CertificateList() {
           <a href={c.verify_url} target="_blank" rel="noreferrer" className="btn-ghost !px-2 !py-1.5 text-xs">
             <ShieldCheck className="w-3.5 h-3.5" /> Verifikasi
           </a>
-          <a href={c.download_url} className="btn-primary !px-3 !py-1.5 text-xs">
-            <Download className="w-3.5 h-3.5" /> Unduh
-          </a>
+          {c.pdf_url ? (
+            <a href={c.download_url || c.pdf_url} className="btn-primary !px-3 !py-1.5 text-xs">
+              <Download className="w-3.5 h-3.5" /> {c.status === 'processing' ? 'Pratinjau' : 'Unduh'}
+            </a>
+          ) : (
+            <span className="badge-yellow">Memproses</span>
+          )}
         </div>
       ),
     },

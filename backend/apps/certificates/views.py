@@ -15,6 +15,7 @@ from apps.accounts.permissions import (
 )
 from apps.events.models import Event
 from apps.participants.models import Participant
+from apps.templates_certificate.models import CertificateTemplate
 
 
 def _guess_name_from_text(text: str) -> str | None:
@@ -52,6 +53,7 @@ from .services import (
     generate_certificates_for_event,
     preview_certificate_number,
 )
+from .utils import generate_certificate_pdf, validate_uploaded_image
 
 
 class CertificateNumberFormatViewSet(viewsets.ModelViewSet):
@@ -136,6 +138,57 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
             'skipped': len(skipped),
             'regenerate': regenerate,
         })
+
+    @action(detail=False, methods=['post'], url_path='configure')
+    def configure(self, request, event_id=None):
+        event = get_object_or_404(Event, id=event_id)
+        template_image = request.FILES.get('template_image')
+        signature_image = request.FILES.get('signature_image')
+        try:
+            validate_uploaded_image(template_image)
+            validate_uploaded_image(signature_image)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        template = event.certificate_template
+        if not template and not template_image:
+            return Response({'detail': 'template_image wajib jika template belum ada.'}, status=status.HTTP_400_BAD_REQUEST)
+        apply_all = str(request.data.get('apply_all', 'false')).lower() == 'true'
+        certificate_number = str(request.data.get('certificate_number') or '').strip()
+        from django.db import transaction
+        with transaction.atomic():
+            if not template:
+                template = CertificateTemplate.objects.create(name=f'Template {event.title}', background_image=template_image)
+                event.certificate_template = template
+                event.save(update_fields=['certificate_template', 'updated_at'])
+            elif template_image:
+                template.background_image = template_image
+            if signature_image:
+                template.signature_image = signature_image
+            if certificate_number:
+                template.default_certificate_number = certificate_number
+            template.save()
+            if apply_all and certificate_number:
+                Certificate.objects.filter(
+                    event=event,
+                    source=Certificate.Source.GENERATED,
+                ).update(certificate_number=certificate_number)
+            generate_certificates_for_event(event, regenerate=True)
+        return Response({'template_id': template.id, 'certificate_number': template.default_certificate_number, 'apply_all': apply_all})
+
+    @action(detail=True, methods=['post'], url_path='set-number', parser_classes=[JSONParser])
+    def set_number(self, request, event_id=None, pk=None):
+        cert = self.get_object()
+        number = str(request.data.get('certificate_number') or '').strip()
+        if not number:
+            return Response({'detail': 'certificate_number wajib diisi.'}, status=status.HTTP_400_BAD_REQUEST)
+        cert.certificate_number = number
+        template = cert.event.certificate_template
+        cert.status = Certificate.Status.AVAILABLE if template and template.background_image and template.signature_image else Certificate.Status.PROCESSING
+        cert.save(update_fields=['certificate_number', 'status', 'updated_at'])
+        if template and template.background_image:
+            pdf = generate_certificate_pdf(cert)
+            cert.pdf_file.save(pdf.name, pdf, save=True)
+        return Response(CertificateSerializer(cert, context={'request': request}).data)
 
     @action(detail=False, methods=['post'], url_path='upload')
     def upload(self, request, event_id=None):
@@ -424,7 +477,7 @@ class PublicCheckCertificateView(APIView):
             Certificate.objects
             .filter(
                 Q(participant__nik=nik) | Q(participant__nip=nik),
-                status=Certificate.Status.AVAILABLE,
+                status__in=[Certificate.Status.AVAILABLE, Certificate.Status.PROCESSING],
             )
             .exclude(pdf_file='')
             .exclude(pdf_file__isnull=True)
@@ -451,8 +504,8 @@ class PublicDownloadCertificateView(APIView):
     def get(self, request, token):
         cert = get_object_or_404(
             Certificate,
+            status__in=[Certificate.Status.AVAILABLE, Certificate.Status.PROCESSING],
             download_token=token,
-            status=Certificate.Status.AVAILABLE,
         )
         if not cert.pdf_file:
             raise Http404('File sertifikat tidak ditemukan.')
@@ -477,13 +530,10 @@ class PublicVerifyCertificateView(APIView):
                 'message': 'Sertifikat tidak ditemukan.',
             })
         template = cert.event.certificate_template
-        signature_applied = bool(template and template.signature_image)
-        if not signature_applied:
-            try:
-                from apps.settings_app.models import AppSetting
-                signature_applied = bool(AppSetting.get_instance().signature_image)
-            except Exception:
-                signature_applied = False
+        signature_applied = bool(
+            cert.status == Certificate.Status.AVAILABLE and
+            template and template.signature_image and cert.pdf_file
+        )
         return Response({
             'valid': cert.status == Certificate.Status.AVAILABLE,
             'signature_applied': signature_applied,

@@ -118,9 +118,13 @@ export default function CheckCertificate() {
                       </div>
                     </div>
                     <div className="flex flex-row md:flex-col gap-2 md:w-44 md:flex-shrink-0">
-                      <a href={c.download_url} className="btn-primary flex-1">
-                        <Download className="w-4 h-4" /> Unduh PDF
-                      </a>
+                      {c.pdf_url ? (
+                        <a href={c.download_url || c.pdf_url} className="btn-primary flex-1">
+                          <Download className="w-4 h-4" /> {c.status === 'processing' ? 'Lihat pratinjau' : 'Unduh PDF'}
+                        </a>
+                      ) : (
+                        <span className="badge-yellow flex-1 text-center">Memproses</span>
+                      )}
                       <a href={c.verify_url} target="_blank" rel="noreferrer" className="btn-outline flex-1">
                         <QrCode className="w-4 h-4" /> Verifikasi
                       </a>

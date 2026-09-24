@@ -9,6 +9,7 @@ class CertificateTemplate(models.Model):
     """
     name = models.CharField(max_length=150)
     background_image = models.ImageField(upload_to='cert_templates/')
+    default_certificate_number = models.CharField(max_length=100, blank=True, default='')
 
     signer_name = models.CharField(max_length=150, blank=True)
     signer_position = models.CharField(max_length=150, blank=True)

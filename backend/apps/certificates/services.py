@@ -105,20 +105,15 @@ def generate_certificates_for_event(event, regenerate: bool = False,
             skipped.append(existing)
             continue
 
+        if existing and existing.source == Certificate.Source.UPLOADED:
+            skipped.append(existing)
+            continue
         if existing and regenerate:
             cert = existing
         else:
             seq_counter += 1
-            if number_format:
-                cert_number = render_number_format(
-                    number_format.pattern,
-                    sequence=seq_counter,
-                    event_title=event.title,
-                    when=now,
-                    app_name=_app_name(),
-                )
-            else:
-                cert_number = make_certificate_number(seq_counter, event.title, now)
+            cert_number = (event.certificate_template.default_certificate_number
+                           if event.certificate_template else '')
             cert = Certificate.objects.create(
                 event=event,
                 participant=att.participant,
@@ -127,14 +122,14 @@ def generate_certificates_for_event(event, regenerate: bool = False,
                 source=Certificate.Source.GENERATED,
             )
 
-        verify_url = f'{settings.FRONTEND_URL}/verifikasi/{cert.verification_token}'
-        qr_file = generate_qr_image(verify_url, logo_path=get_institution_logo_path())
-        cert.qr_code.save(f'{cert.id}.png', qr_file, save=False)
-
-        pdf_file = generate_certificate_pdf(cert)
-        cert.pdf_file.save(pdf_file.name, pdf_file, save=False)
-
-        cert.status = Certificate.Status.AVAILABLE
+        template = event.certificate_template
+        has_final_inputs = bool(template and template.background_image and
+                                template.signature_image and cert.certificate_number)
+        cert.status = Certificate.Status.AVAILABLE if has_final_inputs else Certificate.Status.PROCESSING
+        if template and template.background_image:
+            pdf_file = generate_certificate_pdf(cert)
+            if pdf_file:
+                cert.pdf_file.save(pdf_file.name, pdf_file, save=False)
         cert.save()
         generated.append(cert)
 

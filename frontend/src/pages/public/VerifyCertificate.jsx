@@ -25,6 +25,8 @@ export default function VerifyCertificate() {
   }
 
   const isValid = data?.valid
+  const hasCertificate = Boolean(data?.certificate_number)
+  const isProcessing = hasCertificate && !isValid
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
@@ -62,20 +64,20 @@ export default function VerifyCertificate() {
               : <ShieldAlert className="w-6 h-6 flex-shrink-0" />}
             <div>
               <h1 className="font-serif font-bold text-xl text-ink-900">
-                {isValid ? 'Sertifikat Terverifikasi' : 'Sertifikat Tidak Ditemukan'}
+                {isValid ? 'Sertifikat Terverifikasi' : hasCertificate ? 'Sertifikat Menunggu Pengesahan' : 'Sertifikat Tidak Ditemukan'}
               </h1>
               <p className="text-sm text-ink-700">
                 {isValid
-                  ? 'Dokumen berikut tercatat sah dalam sistem kami.'
-                  : (data?.message || 'Sertifikat tidak terdaftar atau telah dicabut.')}
+                  ? 'Dokumen tercatat final di sistem; gambar QR/tanda tangan bukan tanda tangan elektronik tersertifikasi.'
+                  : (hasCertificate ? 'Pratinjau belum sah sampai nomor dan barcode tanda tangan dilengkapi admin.' : data?.message || 'Sertifikat tidak terdaftar atau telah dicabut.')}
               </p>
             </div>
           </div>
 
-          {isValid && (
+          {(isValid || isProcessing) && (
             <dl className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
               <Row label="Nomor Sertifikat" value={data.certificate_number} span={2} mono />
-              <Row label="Status" value={<span className="badge-green">Tersedia &amp; Sah</span>} />
+              <Row label="Status" value={isProcessing ? <span className="badge-yellow">Memproses</span> : <span className="badge-green">Tersedia &amp; Sah</span>} />
               <Row label="Nama Penerima" value={data.participant_name} span={2} />
               <Row label="Penyelenggara" value={data.organizer || '-'} />
               <Row

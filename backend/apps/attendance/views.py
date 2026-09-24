@@ -177,8 +177,8 @@ class PublicAttendanceView(APIView):
                 'code': 'already_attended',
             }, status=status.HTTP_409_CONFLICT)
 
-        # Sertifikat awal langsung tersedia tanpa tanda tangan. Admin dapat
-        # menerapkan tanda tangan kemudian dengan regenerate dari panel kegiatan.
+        # Buat draft preview setelah attendance; nomor/background/signature tetap
+        # dikendalikan admin melalui workflow certificates.
         try:
             generate_certificates_for_event(event, regenerate=False)
         except Exception:

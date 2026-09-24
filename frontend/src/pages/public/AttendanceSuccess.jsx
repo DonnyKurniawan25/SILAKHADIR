@@ -21,7 +21,7 @@ export default function AttendanceSuccess() {
             Kehadiran Anda pada kegiatan{state?.event_title ? <> <span className="font-semibold text-ink-900">&ldquo;{state.event_title}&rdquo;</span></> : ''} telah berhasil direkam dalam sistem.
           </p>
           <p className="text-sm text-ink-500">
-            Sertifikat awal Anda sudah tersedia dan dapat dilihat sekarang. Tanda tangan/stempel akan diterapkan setelah admin mengunggah dan menerapkannya.
+            Pratinjau sertifikat akan tersedia setelah admin mengunggah template kegiatan. Jika template belum diunggah, silakan menunggu proses penerbitan oleh admin.
           </p>
         </div>
         <div className="bg-slate-50 border-t border-slate-200 p-6 flex flex-wrap gap-2">
