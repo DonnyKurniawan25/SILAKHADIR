@@ -229,82 +229,65 @@ function TabBtn({ active, children, ...props }) {
 function CertTab({ eventId, certs, onRefresh }) {
   const [templateImage, setTemplateImage] = useState(null)
   const [signatureImage, setSignatureImage] = useState(null)
+  const [templatePreview, setTemplatePreview] = useState('')
+  const [signaturePreview, setSignaturePreview] = useState('')
   const [certificateNumber, setCertificateNumberValue] = useState('')
   const [applyAll, setApplyAll] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [layout, setLayout] = useState({ name_position_x: 50, name_position_y: 45, number_position_x: 50, number_position_y: 30, signature_position_x: 82, signature_position_y: 82, signature_width: 14, signature_height: 8 })
 
+  const setFile = (file, setter, previewSetter) => { setter(file || null); previewSetter(file ? URL.createObjectURL(file) : '') }
+  const move = (key, event) => {
+    const surface = event.currentTarget.classList.contains('relative') ? event.currentTarget : event.currentTarget.parentElement
+    const rect = surface.getBoundingClientRect()
+    const x = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100))
+    const y = Math.max(0, Math.min(100, ((event.clientY - rect.top) / rect.height) * 100))
+    setLayout((old) => ({ ...old, [`${key}_position_x`]: Number(x.toFixed(2)), [`${key}_position_y`]: Number(y.toFixed(2)) }))
+  }
   const handleConfigure = async (e) => {
-    e.preventDefault()
-    if (!templateImage && !signatureImage && !certificateNumber.trim()) return
-    setSaving(true)
+    e.preventDefault(); setSaving(true)
     try {
-      await configureEventCertificate(eventId, {
-        templateImage, signatureImage,
-        certificateNumber: certificateNumber.trim(), applyAll,
-      })
-      Swal.fire({ icon: 'success', title: 'Konfigurasi disimpan', text: 'Template dan tanda tangan diproses oleh sistem.', timer: 1800, showConfirmButton: false })
-      onRefresh?.()
-    } catch (err) {
-      Swal.fire({ icon: 'error', title: 'Gagal menyimpan konfigurasi', text: err?.response?.data?.detail || 'Terjadi kesalahan.' })
-    } finally { setSaving(false) }
+      await configureEventCertificate(eventId, { templateImage, signatureImage, certificateNumber: certificateNumber.trim(), applyAll, layout })
+      Swal.fire({ icon: 'success', title: 'Tata letak disimpan', text: 'Pratinjau sertifikat dibuat ulang.', timer: 1800, showConfirmButton: false }); onRefresh?.()
+    } catch (err) { Swal.fire({ icon: 'error', title: 'Gagal menyimpan', text: err?.response?.data?.detail || 'Terjadi kesalahan.' }) }
+    finally { setSaving(false) }
   }
-
   const handleSetNumber = async (cert) => {
-    const { value } = await Swal.fire({
-      title: 'Ubah nomor sertifikat', input: 'text', inputValue: cert.certificate_number || '',
-      inputLabel: 'Nomor sertifikat peserta ini', inputPlaceholder: 'Masukkan nomor sertifikat',
-      showCancelButton: true, confirmButtonText: 'Simpan', cancelButtonText: 'Batal',
-      inputValidator: (v) => !v?.trim() && 'Nomor sertifikat wajib diisi',
-    })
+    const { value } = await Swal.fire({ title: 'Ubah nomor sertifikat', input: 'text', inputValue: cert.certificate_number || '', inputLabel: 'Nomor sertifikat peserta ini', showCancelButton: true, confirmButtonText: 'Simpan', cancelButtonText: 'Batal', inputValidator: (v) => !v?.trim() && 'Nomor wajib diisi' })
     if (!value?.trim()) return
-    try {
-      await setCertificateNumber(eventId, cert.id, value.trim())
-      Swal.fire({ icon: 'success', title: 'Nomor disimpan', timer: 1200, showConfirmButton: false })
-      onRefresh?.()
-    } catch (err) {
-      Swal.fire({ icon: 'error', title: 'Gagal menyimpan nomor', text: err?.response?.data?.detail || 'Terjadi kesalahan.' })
-    }
+    try { await setCertificateNumber(eventId, cert.id, value.trim()); Swal.fire({ icon: 'success', title: 'Nomor disimpan', timer: 1200, showConfirmButton: false }); onRefresh?.() }
+    catch (err) { Swal.fire({ icon: 'error', title: 'Gagal menyimpan nomor', text: err?.response?.data?.detail || 'Terjadi kesalahan.' }) }
   }
-
   const handleReplace = async (cert) => {
-    const { value: file } = await Swal.fire({
-      title: 'Ganti Berkas PDF',
-      text: `Nomor: ${cert.certificate_number || '-'}`,
-      input: 'file', inputAttributes: { accept: 'application/pdf' },
-      showCancelButton: true, confirmButtonText: 'Unggah',
-    })
+    const { value: file } = await Swal.fire({ title: 'Ganti Berkas PDF', text: `Nomor: ${cert.certificate_number || '-'}`, input: 'file', inputAttributes: { accept: 'application/pdf' }, showCancelButton: true, confirmButtonText: 'Unggah' })
     if (!file) return
-    try {
-      await replaceCertificateFile(eventId, cert.id, file)
-      Swal.fire({ icon: 'success', title: 'Berkas diganti', timer: 1200, showConfirmButton: false })
-      onRefresh?.()
-    } catch (e) { Swal.fire({ icon: 'error', title: 'Gagal', text: e?.response?.data?.detail || 'Error' }) }
+    try { await replaceCertificateFile(eventId, cert.id, file); Swal.fire({ icon: 'success', title: 'Berkas diganti', timer: 1200, showConfirmButton: false }); onRefresh?.() }
+    catch (err) { Swal.fire({ icon: 'error', title: 'Gagal', text: err?.response?.data?.detail || 'Error' }) }
   }
 
   return (
     <div className="space-y-4">
       <form onSubmit={handleConfigure} className="card space-y-4">
-        <div>
-          <div className="eyebrow">Konfigurasi Sertifikat</div>
-          <h2 className="font-serif font-bold text-lg text-ink-900 mt-1">Unggah template milik kegiatan</h2>
-          <p className="text-sm text-ink-500 mt-1">Sistem hanya menambahkan nomor sertifikat dan gambar tanda tangan/QR yang Anda unggah. Tidak ada tanda tangan dari Pengaturan global.</p>
-        </div>
+        <div><div className="eyebrow">Editor tata letak sertifikat</div><h2 className="font-serif font-bold text-lg text-ink-900 mt-1">Atur nomor, nama, dan barcode tanda tangan</h2><p className="text-sm text-ink-500 mt-1">Unggah template lalu klik/geser area pratinjau. Posisi elemen disimpan dalam persen dari ukuran template.</p></div>
         <div className="grid md:grid-cols-2 gap-4">
-          <label className="label">Template sertifikat (gambar)<input className="input mt-1" type="file" accept="image/*" onChange={(e) => setTemplateImage(e.target.files?.[0] || null)} /></label>
-          <label className="label">Gambar tanda tangan / QR / barcode<input className="input mt-1" type="file" accept="image/*" onChange={(e) => setSignatureImage(e.target.files?.[0] || null)} /></label>
+          <label className="label">Template sertifikat<input className="input mt-1" type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0], setTemplateImage, setTemplatePreview)} /></label>
+          <label className="label">Barcode/gambar tanda tangan<input className="input mt-1" type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0], setSignatureImage, setSignaturePreview)} /></label>
         </div>
-        <label className="label">Nomor sertifikat bersama (opsional)
-          <input className="input mt-1" value={certificateNumber} onChange={(e) => setCertificateNumberValue(e.target.value)} placeholder="Diisi sama untuk semua jika Terapkan ke semua dipilih" />
-        </label>
-        <label className="flex items-center gap-2 text-sm text-ink-700"><input type="checkbox" checked={applyAll} onChange={(e) => setApplyAll(e.target.checked)} /> Terapkan nomor dan konfigurasi ke semua sertifikat</label>
-        <button type="submit" disabled={saving} className="btn-primary"><Save className="w-4 h-4" /> {saving ? 'Menyimpan...' : 'Simpan konfigurasi'}</button>
+        <div className="grid md:grid-cols-3 gap-3"><label className="label">Ukuran nama (pt)<input className="input mt-1" type="number" min="8" max="120" value={layout.name_font_size || 36} onChange={(e) => setLayout({ ...layout, name_font_size: Number(e.target.value) })} /></label><label className="label">Ukuran nomor (pt)<input className="input mt-1" type="number" min="8" max="60" value={layout.number_font_size || 14} onChange={(e) => setLayout({ ...layout, number_font_size: Number(e.target.value) })} /></label><label className="label">Nomor bersama (opsional)<input className="input mt-1" value={certificateNumber} onChange={(e) => setCertificateNumberValue(e.target.value)} placeholder="Contoh: 001/SERT/2026" /></label></div>
+        <div className="border rounded-lg p-3 bg-slate-50"><p className="text-xs text-ink-500 mb-2">Klik posisi elemen pada gambar untuk memindahkan. Kotak berwarna adalah posisi isian.</p><div className="relative mx-auto overflow-hidden bg-white border" style={{ maxWidth: 760, aspectRatio: '1.414 / 1' }} onClick={(e) => { if (e.target === e.currentTarget) move('name', e) }}>
+          {templatePreview ? <img src={templatePreview} alt="Pratinjau template" className="absolute inset-0 w-full h-full object-fill pointer-events-none" /> : <div className="absolute inset-0 flex items-center justify-center text-sm text-ink-400">Unggah template untuk melihat pratinjau</div>}
+          <PreviewBox label="NAMA PESERTA" x={layout.name_position_x} y={layout.name_position_y} onClick={(e) => { e.stopPropagation(); move('name', e) }} />
+          <PreviewBox label="NOMOR SERTIFIKAT" x={layout.number_position_x} y={layout.number_position_y} onClick={(e) => { e.stopPropagation(); move('number', e) }} />
+          {signaturePreview && <img src={signaturePreview} alt="Barcode tanda tangan" className="absolute object-contain border-2 border-emerald-500 cursor-move" style={{ left: `${layout.signature_position_x}%`, top: `${layout.signature_position_y}%`, width: `${layout.signature_width}%`, height: `${layout.signature_height}%`, transform: 'translate(-50%, -50%)' }} onClick={(e) => { e.stopPropagation(); move('signature', e) }} />}
+        </div><div className="grid grid-cols-2 gap-3 mt-3"><label className="label">Lebar barcode (%)<input className="input mt-1" type="number" min="1" max="60" value={layout.signature_width} onChange={(e) => setLayout({ ...layout, signature_width: Number(e.target.value) })} /></label><label className="label">Tinggi barcode (%)<input className="input mt-1" type="number" min="1" max="60" value={layout.signature_height} onChange={(e) => setLayout({ ...layout, signature_height: Number(e.target.value) })} /></label></div></div>
+        <label className="flex items-center gap-2 text-sm text-ink-700"><input type="checkbox" checked={applyAll} onChange={(e) => setApplyAll(e.target.checked)} /> Terapkan nomor ke semua sertifikat</label>
+        <button type="submit" disabled={saving} className="btn-primary"><Save className="w-4 h-4" /> {saving ? 'Menyimpan...' : 'Simpan tata letak & buat pratinjau'}</button>
       </form>
-
-      {!certs.length ? <div className="border border-slate-200 rounded bg-white p-10 text-center"><Award className="w-10 h-10 text-ink-300 mx-auto mb-2" /><p className="text-ink-500">Belum ada sertifikat. Gunakan tombol Unggah Sertifikat atau Unggah Massal di atas.</p></div> : (
-        <div className="card p-0 overflow-hidden"><table className="table-base"><thead><tr><th>No. Sertifikat</th><th>Nama Peserta</th><th>NIK</th><th>Sumber</th><th>Status</th><th className="text-right pr-4">Tindakan</th></tr></thead><tbody>
-          {certs.map((c) => <tr key={c.id}><td className="font-mono text-xs">{c.certificate_number || '-'}</td><td className="font-semibold">{c.participant_name}</td><td className="font-mono text-xs">{c.nik}</td><td>{c.source === 'uploaded' ? <span className="badge-blue">Unggah</span> : <span className="badge-gray">Otomatis</span>}</td><td><span className={c.status === 'available' || c.pdf_url ? 'badge-green' : 'badge-yellow'}>{c.status || 'Memproses'}</span></td><td className="text-right pr-4"><div className="flex gap-1 justify-end"><button onClick={() => handleSetNumber(c)} className="btn-ghost !px-2 !py-1.5 text-xs" title="Ubah nomor"><Pencil className="w-3.5 h-3.5" /></button><button onClick={() => handleReplace(c)} className="btn-ghost !px-2 !py-1.5 text-xs" title="Ganti berkas"><RefreshCw className="w-3.5 h-3.5" /></button><a href={c.verify_url} target="_blank" rel="noreferrer" className="btn-ghost !px-2 !py-1.5 text-xs">Verifikasi</a>{c.pdf_url ? <a href={c.download_url || c.pdf_url} className="btn-primary !px-3 !py-1.5 text-xs">Unduh</a> : <span className="badge-yellow">Memproses</span>}</div></td></tr>)}
-        </tbody></table></div>
-      )}
+      {!certs.length ? <div className="border border-slate-200 rounded bg-white p-10 text-center"><Award className="w-10 h-10 text-ink-300 mx-auto mb-2" /><p className="text-ink-500">Belum ada sertifikat.</p></div> : <div className="card p-0 overflow-hidden"><table className="table-base"><thead><tr><th>No. Sertifikat</th><th>Nama Peserta</th><th>Status</th><th className="text-right pr-4">Tindakan</th></tr></thead><tbody>{certs.map((c) => <tr key={c.id}><td className="font-mono text-xs">{c.certificate_number || '-'}</td><td className="font-semibold">{c.participant_name}</td><td><span className={c.status === 'available' ? 'badge-green' : 'badge-yellow'}>{c.status || 'Memproses'}</span></td><td className="text-right pr-4"><button onClick={() => handleSetNumber(c)} className="btn-ghost !px-2 !py-1.5 text-xs"><Pencil className="w-3.5 h-3.5" /> Nomor</button> <button onClick={() => handleReplace(c)} className="btn-ghost !px-2 !py-1.5 text-xs"><RefreshCw className="w-3.5 h-3.5" /> PDF</button>{c.pdf_url && <a href={c.download_url || c.pdf_url} className="btn-primary !px-3 !py-1.5 text-xs ml-1">Unduh</a>}</td></tr>)}</tbody></table></div>}
     </div>
   )
+}
+
+function PreviewBox({ label, x, y, onClick }) {
+  return <button type="button" className="absolute z-10 -translate-x-1/2 -translate-y-1/2 border-2 border-dashed border-brand-700 bg-white/75 px-2 py-1 text-[10px] font-bold text-brand-900 cursor-move" style={{ left: `${x}%`, top: `${y}%` }} onClick={onClick}>{label}</button>
 }

@@ -154,6 +154,29 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({'detail': 'template_image wajib jika template belum ada.'}, status=status.HTTP_400_BAD_REQUEST)
         apply_all = str(request.data.get('apply_all', 'false')).lower() == 'true'
         certificate_number = str(request.data.get('certificate_number') or '').strip()
+        def layout_value(name, default, low=0, high=100):
+            raw = request.data.get(name)
+            if raw in (None, ''):
+                return default
+            try:
+                return max(low, min(high, float(raw)))
+            except (TypeError, ValueError):
+                raise ValueError(f'{name} harus berupa angka.')
+        try:
+            layout = {
+                'name_position_x': layout_value('name_position_x', 50),
+                'name_position_y': layout_value('name_position_y', 45),
+                'number_position_x': layout_value('number_position_x', 50),
+                'number_position_y': layout_value('number_position_y', 30),
+                'signature_position_x': layout_value('signature_position_x', 82),
+                'signature_position_y': layout_value('signature_position_y', 82),
+                'signature_width': layout_value('signature_width', 14, 1, 60),
+                'signature_height': layout_value('signature_height', 8, 1, 60),
+                'name_font_size': layout_value('name_font_size', 36, 8, 120),
+                'number_font_size': layout_value('number_font_size', 14, 8, 60),
+            }
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         from django.db import transaction
         with transaction.atomic():
             if not template:
@@ -166,6 +189,8 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
                 template.signature_image = signature_image
             if certificate_number:
                 template.default_certificate_number = certificate_number
+            for field, value in layout.items():
+                setattr(template, field, value)
             template.save()
             if apply_all and certificate_number:
                 Certificate.objects.filter(

@@ -32,11 +32,12 @@ export const bulkUploadCertificates = (eventId, { files, dryRun = false, createM
   })
 }
 
-export const configureEventCertificate = (eventId, { templateImage, signatureImage, certificateNumber, applyAll = false }) => {
+export const configureEventCertificate = (eventId, { templateImage, signatureImage, certificateNumber, applyAll = false, layout = {} }) => {
   const fd = new FormData()
   if (templateImage) fd.append('template_image', templateImage)
   if (signatureImage) fd.append('signature_image', signatureImage)
   if (certificateNumber !== undefined && certificateNumber !== null) fd.append('certificate_number', certificateNumber)
+  Object.entries(layout).forEach(([key, value]) => fd.append(key, String(value)))
   fd.append('apply_all', applyAll ? 'true' : 'false')
   return api.post(`/events/${eventId}/certificates/configure/`, fd, {
     headers: { 'Content-Type': 'multipart/form-data' },

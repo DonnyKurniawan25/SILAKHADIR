@@ -248,28 +248,23 @@ def generate_certificate_pdf(certificate) -> ContentFile:
         except Exception:
             pass
 
-        sig_y = page_h * 0.12
         signature_path = template.signature_image.path if template.signature_image else None
-        stamp_path = template.stamp_image.path if template.stamp_image else global_stamp
-        if stamp_path:
-            try:
-                img = ImageReader(stamp_path)
-                c.drawImage(img, page_w * 0.72, sig_y - 10, width=80, height=80,
-                            mask='auto', preserveAspectRatio=True)
-            except Exception:
-                pass
+        sig_x, sig_y = pos(template.signature_position_x, template.signature_position_y)
+        sig_w = page_w * (template.signature_width / 100)
+        sig_h = page_h * (template.signature_height / 100)
         if signature_path:
             try:
                 img = ImageReader(signature_path)
-                c.drawImage(img, page_w * 0.75, sig_y, width=120, height=60,
-                            mask='auto', preserveAspectRatio=True)
+                c.drawImage(img, sig_x - sig_w / 2, sig_y - sig_h / 2,
+                            width=sig_w, height=sig_h, mask='auto',
+                            preserveAspectRatio=True, anchor='c')
             except Exception:
                 pass
         c.setFillColorRGB(0.1, 0.1, 0.1)
         c.setFont('Helvetica', 12)
-        c.drawCentredString(page_w * 0.82, sig_y - 20, template.signer_position or '')
+        c.drawCentredString(sig_x, sig_y - sig_h / 2 - 20, template.signer_position or '')
         c.setFont('Helvetica-Bold', 13)
-        c.drawCentredString(page_w * 0.82, sig_y - 38, template.signer_name or '')
+        c.drawCentredString(sig_x, sig_y - sig_h / 2 - 38, template.signer_name or '')
 
     c.showPage()
     c.save()

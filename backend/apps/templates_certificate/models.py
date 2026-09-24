@@ -27,6 +27,10 @@ class CertificateTemplate(models.Model):
     qr_position_y = models.FloatField(default=85)
     number_position_x = models.FloatField(default=50)
     number_position_y = models.FloatField(default=30)
+    signature_position_x = models.FloatField(default=82)
+    signature_position_y = models.FloatField(default=82)
+    signature_width = models.FloatField(default=14)
+    signature_height = models.FloatField(default=8)
 
     # Ukuran font (pt)
     name_font_size = models.PositiveSmallIntegerField(default=36)
