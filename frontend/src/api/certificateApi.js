@@ -32,6 +32,9 @@ export const bulkUploadCertificates = (eventId, { files, dryRun = false, createM
   })
 }
 
+export const generateEventCertificates = (eventId, { regenerate = false } = {}) =>
+  api.post(`/events/${eventId}/certificates/generate/`, { regenerate })
+
 export const replaceCertificateFile = (eventId, certId, pdfFile) => {
   const fd = new FormData()
   fd.append('pdf_file', pdfFile)

@@ -14,7 +14,7 @@ import BulkUploadModal from './BulkUploadModal'
 import EventReportTab from './EventReportTab'
 import { closeEvent, finishEvent, getEvent, getAttendanceLink } from '../../api/eventApi'
 import {
-  listEventCertificates, replaceCertificateFile,
+  listEventCertificates, replaceCertificateFile, generateEventCertificates,
 } from '../../api/certificateApi'
 
 export default function EventDetail() {
@@ -53,6 +53,31 @@ export default function EventDetail() {
     })
     if (!isConfirmed) return
     await finishEvent(id); loadEvent()
+  }
+
+  const handleApplySignature = async () => {
+    const { isConfirmed } = await Swal.fire({
+      icon: 'question',
+      title: 'Terapkan tanda tangan?',
+      text: 'Sertifikat kegiatan akan dibuat ulang menggunakan tanda tangan/stempel terbaru dari Pengaturan.',
+      showCancelButton: true,
+      confirmButtonText: 'Ya, terapkan',
+      cancelButtonText: 'Batal',
+    })
+    if (!isConfirmed) return
+    try {
+      const { data } = await generateEventCertificates(id, { regenerate: true })
+      Swal.fire({
+        icon: 'success',
+        title: 'Sertifikat diperbarui',
+        text: `${data.generated} sertifikat dibuat ulang dengan tanda tangan/stempel terbaru.`,
+        timer: 1800,
+        showConfirmButton: false,
+      })
+      loadEvent()
+    } catch (e) {
+      Swal.fire({ icon: 'error', title: 'Gagal menerapkan tanda tangan', text: e?.response?.data?.detail || 'Terjadi kesalahan.' })
+    }
   }
 
   const copyLink = async () => {
@@ -166,6 +191,9 @@ export default function EventDetail() {
             <Check className="w-4 h-4" /> Tandai Selesai
           </button>
           <div className="flex-1" />
+          <button onClick={handleApplySignature} className="btn-outline">
+            <RefreshCw className="w-4 h-4" /> Terapkan Tanda Tangan
+          </button>
           <button onClick={() => setUploadOpen(true)} className="btn-outline">
             <Upload className="w-4 h-4" /> Unggah Sertifikat
           </button>

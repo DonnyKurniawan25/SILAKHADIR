@@ -213,19 +213,32 @@ def generate_certificate_pdf(certificate) -> ContentFile:
         except Exception:
             pass
 
-    # Tanda tangan & stempel
+    # Tanda tangan & stempel. Prioritas: template kegiatan, lalu branding
+    # global yang diunggah admin dari Pengaturan.
     if template:
+        global_signature = None
+        global_stamp = None
+        try:
+            from apps.settings_app.models import AppSetting
+            branding = AppSetting.get_instance()
+            global_signature = branding.signature_image.path if branding.signature_image else None
+            global_stamp = branding.stamp_image.path if branding.stamp_image else None
+        except Exception:
+            pass
+
         sig_y = page_h * 0.12
-        if template.stamp_image:
+        signature_path = template.signature_image.path if template.signature_image else global_signature
+        stamp_path = template.stamp_image.path if template.stamp_image else global_stamp
+        if stamp_path:
             try:
-                img = ImageReader(template.stamp_image.path)
+                img = ImageReader(stamp_path)
                 c.drawImage(img, page_w * 0.72, sig_y - 10, width=80, height=80,
                             mask='auto', preserveAspectRatio=True)
             except Exception:
                 pass
-        if template.signature_image:
+        if signature_path:
             try:
-                img = ImageReader(template.signature_image.path)
+                img = ImageReader(signature_path)
                 c.drawImage(img, page_w * 0.75, sig_y, width=120, height=60,
                             mask='auto', preserveAspectRatio=True)
             except Exception:

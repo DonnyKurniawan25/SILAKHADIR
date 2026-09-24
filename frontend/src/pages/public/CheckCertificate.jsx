@@ -1,20 +1,30 @@
-import { useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Search, Download, QrCode, Loader2, Calendar, Building2, FileText } from 'lucide-react'
 import { checkCertificate } from '../../api/certificateApi'
 
 export default function CheckCertificate() {
-  const { register, handleSubmit, formState: { isSubmitting } } = useForm()
+  const [searchParams] = useSearchParams()
+  const [nik, setNik] = useState(searchParams.get('nik') || '')
   const [result, setResult] = useState(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const onSubmit = async (data) => {
+  const search = async (value = nik) => {
+    setIsSubmitting(true)
     try {
-      const { data: resp } = await checkCertificate(data.nik.trim())
+      const { data: resp } = await checkCertificate(value.trim())
       setResult(resp)
     } catch {
       setResult({ found: false, message: 'Terjadi kesalahan. Silakan coba kembali.' })
+    } finally {
+      setIsSubmitting(false)
     }
   }
+
+  useEffect(() => {
+    const initialNik = searchParams.get('nik')
+    if (initialNik) search(initialNik)
+  }, [searchParams])
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10">
@@ -31,7 +41,7 @@ export default function CheckCertificate() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="card">
+      <form onSubmit={(e) => { e.preventDefault(); search() }} className="card">
         <label className="label">Nomor NIK</label>
         <div className="flex flex-col md:flex-row gap-2">
           <input
@@ -39,7 +49,8 @@ export default function CheckCertificate() {
             inputMode="numeric"
             placeholder="Contoh: 5201012345678901"
             maxLength={16}
-            {...register('nik', { required: true })}
+            value={nik}
+            onChange={(e) => setNik(e.target.value)}
           />
           <button type="submit" disabled={isSubmitting} className="btn-primary whitespace-nowrap">
             {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}

@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.http import HttpResponse
@@ -8,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from apps.certificates.services import generate_certificates_for_event
 from apps.certificates.utils import (
     generate_qr_image,
     get_institution_logo_path,
@@ -18,6 +21,8 @@ from apps.participants.models import Participant
 
 from .models import Attendance
 from .serializers import PublicAttendanceSerializer
+
+logger = logging.getLogger(__name__)
 
 
 def _client_ip(request):
@@ -171,6 +176,13 @@ class PublicAttendanceView(APIView):
                 'detail': f'NIK {nik} sudah tercatat hadir pada kegiatan ini.',
                 'code': 'already_attended',
             }, status=status.HTTP_409_CONFLICT)
+
+        # Sertifikat awal langsung tersedia tanpa tanda tangan. Admin dapat
+        # menerapkan tanda tangan kemudian dengan regenerate dari panel kegiatan.
+        try:
+            generate_certificates_for_event(event, regenerate=False)
+        except Exception:
+            logger.exception('Gagal membuat sertifikat awal untuk event %s', event.id)
 
         return Response({
             'detail': 'Absensi berhasil direkam.',
