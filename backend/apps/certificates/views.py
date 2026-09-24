@@ -476,8 +476,18 @@ class PublicVerifyCertificateView(APIView):
                 'valid': False,
                 'message': 'Sertifikat tidak ditemukan.',
             })
+        template = cert.event.certificate_template
+        signature_applied = bool(template and template.signature_image)
+        if not signature_applied:
+            try:
+                from apps.settings_app.models import AppSetting
+                signature_applied = bool(AppSetting.get_instance().signature_image)
+            except Exception:
+                signature_applied = False
         return Response({
             'valid': cert.status == Certificate.Status.AVAILABLE,
+            'signature_applied': signature_applied,
+            'signature_status': 'Sudah ditandatangani' if signature_applied else 'Belum ditandatangani',
             'certificate_number': cert.certificate_number,
             'participant_name': cert.participant.full_name,
             'event_title': cert.event.title,
