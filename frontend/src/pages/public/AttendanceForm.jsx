@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import SignatureCanvas from 'react-signature-canvas'
-import { publicEventInfo, submitAttendance } from '../../api/attendanceApi'
+import { publicEventInfo, submitAttendance, lookupParticipant } from '../../api/attendanceApi'
 import { Calendar, MapPin, Building2, Loader2, AlertCircle } from 'lucide-react'
 import Swal from 'sweetalert2'
 import Captcha from '../../components/Captcha'
@@ -12,9 +12,11 @@ export default function AttendanceForm() {
   const navigate = useNavigate()
   const [event, setEvent] = useState(null)
   const [loading, setLoading] = useState(true)
-  const { register, handleSubmit, formState: { errors, isSubmitting }, watch } = useForm({
+  const { register, handleSubmit, formState: { errors, isSubmitting }, watch, setValue, getValues } = useForm({
     defaultValues: { is_asn: false, nip: '' },
   })
+  const [lookupLoading, setLookupLoading] = useState(false)
+  const [lookupMessage, setLookupMessage] = useState('')
   const sigRef = useRef(null)
   const captchaRef = useRef(null)
 
@@ -24,6 +26,38 @@ export default function AttendanceForm() {
       .catch(() => setEvent(null))
       .finally(() => setLoading(false))
   }, [slug])
+
+  const lookupExistingParticipant = async () => {
+    const nik = String(getValues('nik') || '').trim()
+    const nip = String(getValues('nip') || '').trim()
+    if (!/^\d{16}$/.test(nik)) return
+    if (watch('is_asn') && nip && !/^\d{18}$/.test(nip)) return
+
+    setLookupLoading(true)
+    setLookupMessage('')
+    try {
+      const { data } = await lookupParticipant(slug, { nik, nip })
+      if (data.found) {
+        setValue('is_asn', data.is_asn, { shouldValidate: true })
+        setValue('full_name', data.full_name || '', { shouldValidate: true })
+        setValue('institution', data.institution || '')
+        setValue('position', data.position || '')
+        setValue('phone', data.phone || '')
+        setValue('email', data.email || '')
+        if (data.is_asn && data.nip) setValue('nip', data.nip)
+        setLookupMessage('Data sebelumnya ditemukan dan sudah diisi otomatis.')
+      } else if (data.requires_nip) {
+        setValue('is_asn', true, { shouldValidate: true })
+        setLookupMessage('Data ASN ditemukan. Masukkan NIP yang sesuai untuk mengisi otomatis.')
+      } else {
+        setLookupMessage('Data belum pernah ditemukan. Silakan isi data baru.')
+      }
+    } catch (e) {
+      setLookupMessage(e?.response?.data?.detail || 'Data lama belum dapat dimuat.')
+    } finally {
+      setLookupLoading(false)
+    }
+  }
 
   const onSubmit = async (data) => {
     const captcha = captchaRef.current?.getValue()
@@ -142,6 +176,7 @@ export default function AttendanceForm() {
                   minLength: { value: 16, message: 'NIK harus 16 digit' },
                   maxLength: { value: 16, message: 'NIK harus 16 digit' },
                 })}
+                onBlur={lookupExistingParticipant}
               />
               {errors.nik && <p className="text-xs text-rose-600 mt-1">{errors.nik.message}</p>}
             </div>
@@ -166,6 +201,7 @@ export default function AttendanceForm() {
                   minLength: { value: 18, message: 'NIP harus 18 digit' },
                   maxLength: { value: 18, message: 'NIP harus 18 digit' },
                 })}
+                onBlur={lookupExistingParticipant}
               />
               {errors.nip && <p className="text-xs text-rose-600 mt-1">{errors.nip.message}</p>}
             </div>
@@ -175,6 +211,8 @@ export default function AttendanceForm() {
             <input className="input" {...register('full_name', { required: 'Nama wajib diisi' })} />
             {errors.full_name && <p className="text-xs text-rose-600 mt-1">{errors.full_name.message}</p>}
           </div>
+          {lookupLoading && <p className="text-xs text-brand-700 mt-2">Memeriksa data sebelumnya...</p>}
+          {lookupMessage && <p className="text-xs text-emerald-700 mt-2">{lookupMessage}</p>}
         </div>
 
         <hr className="border-slate-200" />

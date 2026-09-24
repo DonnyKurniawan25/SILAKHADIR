@@ -57,6 +57,42 @@ class PublicEventQRView(APIView):
         return resp
 
 
+class PublicParticipantLookupView(APIView):
+    """Lookup profil peserta lama untuk mengisi form absensi otomatis.
+
+    NIK digunakan sebagai identitas awal. Untuk profil ASN, NIP juga wajib cocok
+    sebelum data profil dikembalikan.
+    """
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'attendance'
+
+    def post(self, request, slug):
+        event = get_object_or_404(Event, public_slug=slug)
+        nik = str(request.data.get('nik') or '').strip()
+        nip = str(request.data.get('nip') or '').strip()
+        if len(nik) != 16 or not nik.isdigit():
+            return Response({'detail': 'NIK harus 16 digit angka.'}, status=status.HTTP_400_BAD_REQUEST)
+        if nip and (len(nip) != 18 or not nip.isdigit()):
+            return Response({'detail': 'NIP harus 18 digit angka.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        participant = Participant.objects.filter(nik=nik).order_by('-updated_at').first()
+        if not participant:
+            return Response({'found': False})
+        if participant.is_asn and participant.nip != nip:
+            return Response({'found': False, 'requires_nip': True})
+
+        return Response({
+            'found': True,
+            'is_asn': participant.is_asn,
+            'full_name': participant.full_name,
+            'institution': participant.institution,
+            'position': participant.position,
+            'phone': participant.phone,
+            'email': participant.email,
+        })
+
+
 class PublicAttendanceView(APIView):
     """Endpoint publik untuk submit absensi tanpa login."""
     permission_classes = [AllowAny]
