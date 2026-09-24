@@ -239,24 +239,13 @@ def generate_certificate_pdf(certificate) -> ContentFile:
     def pos(px, py):
         return _pct_to_xy(page_w, page_h, px, py)
 
-    # Nomor sertifikat
-    num_x, num_y = pos(
-        template.number_position_x if template else 50,
-        template.number_position_y if template else 30,
-    )
-    c.setFont('Helvetica', template.number_font_size if template else 14)
-    c.setFillColorRGB(0.2, 0.2, 0.2)
-    number = certificate.certificate_number or 'Menunggu nomor dari admin'
-    c.drawCentredString(num_x, num_y, f'Nomor: {number}')
-
-    if certificate.status == certificate.Status.PROCESSING:
-        c.saveState()
-        c.setFillColorRGB(0.75, 0.1, 0.1, alpha=0.28)
-        c.setFont('Helvetica-Bold', 42)
-        c.translate(page_w / 2, page_h / 2)
-        c.rotate(30)
-        c.drawCentredString(0, 0, 'BELUM DITANDATANGANI')
-        c.restoreState()
+    # Only participant-specific fields belong on the uploaded design.
+    # The admin's background already contains the event, date and signer text.
+    if certificate.certificate_number:
+        num_x, num_y = pos(template.number_position_x, template.number_position_y)
+        c.setFont('Helvetica', template.number_font_size)
+        c.setFillColorRGB(0.2, 0.2, 0.2)
+        c.drawCentredString(num_x, num_y, f'Nomor: {certificate.certificate_number}')
 
     # Nama peserta
     name_x, name_y = pos(
@@ -267,74 +256,32 @@ def generate_certificate_pdf(certificate) -> ContentFile:
     c.setFillColorRGB(0.07, 0.18, 0.45)
     c.drawCentredString(name_x, name_y, participant.full_name.upper())
 
-    # Nama kegiatan
-    ev_x, ev_y = pos(
-        template.event_position_x if template else 50,
-        template.event_position_y if template else 58,
-    )
-    c.setFont('Helvetica', template.event_font_size if template else 20)
-    c.setFillColorRGB(0.15, 0.15, 0.15)
-    c.drawCentredString(ev_x, ev_y, event.title)
-    if event.theme:
-        c.setFont('Helvetica-Oblique', (template.event_font_size if template else 16) - 4)
-        c.drawCentredString(ev_x, ev_y - 22, event.theme)
+    # Event title, theme, date, location and signer labels are part of the
+    # uploaded template; do not paint a second copy over them.
 
-    # Tanggal
-    d_x, d_y = pos(
-        template.date_position_x if template else 50,
-        template.date_position_y if template else 70,
-    )
-    c.setFont('Helvetica', template.date_font_size if template else 16)
-    c.setFillColorRGB(0.2, 0.2, 0.2)
-    c.drawCentredString(d_x, d_y, _format_date_range(event.start_date, event.end_date))
-    if event.location:
-        c.setFont('Helvetica', (template.date_font_size if template else 14) - 2)
-        c.drawCentredString(d_x, d_y - 20, event.location)
-
-    # QR Code
-    if certificate.qr_code:
+    # One QR/signer artifact only. Use the uploaded artifact at its own
+    # editor position; otherwise use the generated verification QR.
+    if template.signature_image:
+        artifact_path = template.signature_image.path
+        artifact_x, artifact_y = pos(template.signature_position_x, template.signature_position_y)
+        artifact_w = page_w * (template.signature_width / 100)
+        artifact_h = page_h * (template.signature_height / 100)
+    elif certificate.qr_code:
+        artifact_path = certificate.qr_code.path
+        artifact_x, artifact_y = pos(template.qr_position_x, template.qr_position_y)
+        artifact_w = artifact_h = page_w * (template.qr_size / 100)
+    else:
+        artifact_path = None
+    if artifact_path:
         try:
-            qr_img = ImageReader(certificate.qr_code.path)
-            qr_x, qr_y = pos(
-                template.qr_position_x if template else 10,
-                template.qr_position_y if template else 85,
-            )
-            qr_size = page_w * ((template.qr_size if template else 14) / 100)
-            c.drawImage(qr_img, qr_x - qr_size / 2, qr_y - qr_size / 2,
-                        width=qr_size, height=qr_size, mask='auto')
+            artifact_img = ImageReader(artifact_path)
+            c.drawImage(artifact_img, artifact_x - artifact_w / 2, artifact_y - artifact_h / 2,
+                        width=artifact_w, height=artifact_h, mask='auto',
+                        preserveAspectRatio=True, anchor='c')
         except Exception:
             pass
 
-    # Tanda tangan & stempel. Prioritas: template kegiatan, lalu branding
-    # global yang diunggah admin dari Pengaturan.
-    if template:
-        global_signature = None
-        global_stamp = None
-        try:
-            from apps.settings_app.models import AppSetting
-            branding = AppSetting.get_instance()
-            global_signature = branding.signature_image.path if branding.signature_image else None
-            global_stamp = branding.stamp_image.path if branding.stamp_image else None
-        except Exception:
-            pass
-
-        signature_path = template.signature_image.path if template.signature_image else None
-        sig_x, sig_y = pos(template.signature_position_x, template.signature_position_y)
-        sig_w = page_w * (template.signature_width / 100)
-        sig_h = page_h * (template.signature_height / 100)
-        if signature_path:
-            try:
-                img = ImageReader(signature_path)
-                c.drawImage(img, sig_x - sig_w / 2, sig_y - sig_h / 2,
-                            width=sig_w, height=sig_h, mask='auto',
-                            preserveAspectRatio=True, anchor='c')
-            except Exception:
-                pass
-        c.setFillColorRGB(0.1, 0.1, 0.1)
-        c.setFont('Helvetica', 12)
-        c.drawCentredString(sig_x, sig_y - sig_h / 2 - 20, template.signer_position or '')
-        c.setFont('Helvetica-Bold', 13)
-        c.drawCentredString(sig_x, sig_y - sig_h / 2 - 38, template.signer_name or '')
+    # No extra signer labels: they are already printed in the uploaded design.
 
     c.showPage()
     c.save()
