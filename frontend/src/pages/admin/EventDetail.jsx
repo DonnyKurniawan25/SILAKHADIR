@@ -229,6 +229,7 @@ function TabBtn({ active, children, ...props }) {
 
 const DEFAULT_CERT_LAYOUT = {
   name_position_x: 50, name_position_y: 45, number_position_x: 50, number_position_y: 30,
+  qr_position_x: 10, qr_position_y: 85, qr_size: 14,
   signature_position_x: 82, signature_position_y: 82, signature_width: 14, signature_height: 8,
   name_font_size: 36, number_font_size: 14,
 }
@@ -250,6 +251,7 @@ function CertTab({ eventId, certs, onRefresh }) {
   const [templateRatio, setTemplateRatio] = useState(1.414)
   const surfaceRef = useRef(null)
   const requestId = useRef(0)
+  const resizeState = useRef(null)
   const objectUrls = useRef({ template: '', signature: '' })
 
   const setLayoutValue = (key, value) => setLayout((old) => ({ ...old, [key]: Number(value) }))
@@ -329,6 +331,30 @@ function CertTab({ eventId, certs, onRefresh }) {
   }
   const handlePointerMove = (key, event) => { if (event.currentTarget.hasPointerCapture?.(event.pointerId)) move(key, event.clientX, event.clientY) }
   const handlePointerUp = (event) => { event.currentTarget.releasePointerCapture?.(event.pointerId) }
+  const handleResizeStart = (key, event) => {
+    event.preventDefault(); event.stopPropagation(); setSelected(key)
+    resizeState.current = { key, x: event.clientX, y: event.clientY, layout: { ...layout } }
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }
+  const handleResizeMove = (event) => {
+    const state = resizeState.current
+    const surface = surfaceRef.current
+    if (!state || !surface || !event.currentTarget.hasPointerCapture?.(event.pointerId)) return
+    const dx = ((event.clientX - state.x) / surface.getBoundingClientRect().width) * 100
+    const dy = ((event.clientY - state.y) / surface.getBoundingClientRect().height) * 100
+    if (state.key === 'name' || state.key === 'number') {
+      const field = state.key === 'name' ? 'name_font_size' : 'number_font_size'
+      setLayout((old) => ({ ...old, [field]: Math.round(Math.max(8, Math.min(state.key === 'name' ? 120 : 60, state.layout[field] + dx * 1.4))) }))
+    } else if (state.key === 'qr') {
+      setLayout((old) => ({ ...old, qr_size: Number(Math.max(2, Math.min(60, state.layout.qr_size + dx)).toFixed(2)) }))
+    } else {
+      setLayout((old) => ({ ...old,
+        [`${state.key}_width`]: Number(Math.max(2, Math.min(60, state.layout[`${state.key}_width`] + dx)).toFixed(2)),
+        [`${state.key}_height`]: Number(Math.max(2, Math.min(60, state.layout[`${state.key}_height`] + dy)).toFixed(2)),
+      }))
+    }
+  }
+  const handleResizeEnd = (event) => { resizeState.current = null; event.currentTarget.releasePointerCapture?.(event.pointerId) }
 
   const handleSetNumber = async (cert) => {
     const { value } = await Swal.fire({ title: 'Ubah nomor sertifikat', input: 'text', inputValue: cert.certificate_number || '', inputLabel: 'Nomor sertifikat peserta ini', showCancelButton: true, confirmButtonText: 'Simpan', cancelButtonText: 'Batal', inputValidator: (v) => !v?.trim() && 'Nomor wajib diisi' })
@@ -353,12 +379,13 @@ function CertTab({ eventId, certs, onRefresh }) {
           <label className="label">Barcode/gambar tanda tangan<input className="input mt-1" type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0], 'signature', setSignatureImage, setSignaturePreview)} /></label>
         </div>
         <div className="flex flex-wrap gap-2 items-center"><button type="button" onClick={handleSuggest} disabled={suggesting || loadingConfig} className="btn-outline">{suggesting ? 'Menganalisis...' : 'Sarankan posisi otomatis'}</button>{suggestionNote && <span className="text-xs text-ink-500 max-w-xl">{suggestionNote}</span>}</div>
-        <div className="grid md:grid-cols-3 gap-3"><label className="label">Ukuran nama (pt)<input className="input mt-1" type="number" min="8" max="120" value={layout.name_font_size} onChange={(e) => setLayoutValue('name_font_size', e.target.value)} /></label><label className="label">Ukuran nomor/barcode (pt)<input className="input mt-1" type="number" min="8" max="60" value={layout.number_font_size} onChange={(e) => setLayoutValue('number_font_size', e.target.value)} /></label><label className="label">Nomor bersama (opsional)<input className="input mt-1" value={certificateNumber} onChange={(e) => setCertificateNumberValue(e.target.value)} placeholder="Contoh: 001/SERT/2026" /></label></div>
-        <div className="border rounded-lg p-3 bg-slate-50"><p className="text-xs text-ink-500 mb-2">Pilih lalu geser elemen dengan pointer. Klik latar tidak memindahkan nama.</p><div ref={surfaceRef} className="relative mx-auto overflow-hidden bg-white border" style={{ maxWidth: 760, aspectRatio: `${templateRatio} / 1` }}>
+        <label className="label">Nomor bersama (opsional)<input className="input mt-1" value={certificateNumber} onChange={(e) => setCertificateNumberValue(e.target.value)} placeholder="Contoh: 001/SERT/2026" /></label>
+        <div className="border rounded-lg p-3 bg-slate-50"><p className="text-xs text-ink-500 mb-2">Klik nama, nomor, QR, atau tanda tangan. Geser kotaknya untuk memindahkan; tarik titik di pojok kanan-bawah untuk memperbesar atau memperkecil. QR contoh hanya penanda bila belum ada sertifikat peserta.</p><div ref={surfaceRef} className="relative mx-auto overflow-hidden bg-white border" style={{ maxWidth: 760, aspectRatio: `${templateRatio} / 1` }}>
           {templatePreview ? <img src={templatePreview} alt="Pratinjau template" onLoad={(e) => e.currentTarget.naturalHeight && setTemplateRatio(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight)} className="absolute inset-0 w-full h-full object-fill pointer-events-none" /> : <div className="absolute inset-0 flex items-center justify-center text-sm text-ink-400">Unggah template untuk melihat pratinjau</div>}
-          <PreviewBox label="NAMA PESERTA" x={layout.name_position_x} y={layout.name_position_y} selected={selected === 'name'} fontSize={layout.name_font_size} surfaceRef={surfaceRef} onPointerDown={(e) => handlePointerDown('name', e)} onPointerMove={(e) => handlePointerMove('name', e)} onPointerUp={handlePointerUp} />
-          <PreviewBox label="NOMOR SERTIFIKAT" x={layout.number_position_x} y={layout.number_position_y} selected={selected === 'number'} fontSize={layout.number_font_size} surfaceRef={surfaceRef} onPointerDown={(e) => handlePointerDown('number', e)} onPointerMove={(e) => handlePointerMove('number', e)} onPointerUp={handlePointerUp} />
-          {signaturePreview && <img src={signaturePreview} alt="Barcode tanda tangan" className={`absolute object-contain cursor-move ${selected === 'signature' ? 'border-2 border-emerald-600' : 'border border-emerald-400'}`} style={{ left: `${layout.signature_position_x}%`, top: `${layout.signature_position_y}%`, width: `${layout.signature_width}%`, height: `${layout.signature_height}%`, transform: 'translate(-50%, -50%)' }} onPointerDown={(e) => handlePointerDown('signature', e)} onPointerMove={(e) => handlePointerMove('signature', e)} onPointerUp={handlePointerUp} />}</div><div className="grid md:grid-cols-3 gap-3 mt-3"><PositionInput label="Nama X (%)" value={layout.name_position_x} onChange={(v) => setLayoutValue('name_position_x', v)} /><PositionInput label="Nama Y (%)" value={layout.name_position_y} onChange={(v) => setLayoutValue('name_position_y', v)} /><PositionInput label="Nomor X (%)" value={layout.number_position_x} onChange={(v) => setLayoutValue('number_position_x', v)} /><PositionInput label="Nomor Y (%)" value={layout.number_position_y} onChange={(v) => setLayoutValue('number_position_y', v)} /><PositionInput label="Tanda tangan X (%)" value={layout.signature_position_x} onChange={(v) => setLayoutValue('signature_position_x', v)} /><PositionInput label="Tanda tangan Y (%)" value={layout.signature_position_y} onChange={(v) => setLayoutValue('signature_position_y', v)} /><PositionInput label="Lebar tanda tangan (%)" value={layout.signature_width} onChange={(v) => setLayoutValue('signature_width', v)} /><PositionInput label="Tinggi tanda tangan (%)" value={layout.signature_height} onChange={(v) => setLayoutValue('signature_height', v)} /></div></div>
+          <PreviewBox label="NAMA PESERTA" keyName="name" x={layout.name_position_x} y={layout.name_position_y} selected={selected === 'name'} fontSize={layout.name_font_size} surfaceRef={surfaceRef} onPointerDown={(e) => handlePointerDown('name', e)} onPointerMove={(e) => handlePointerMove('name', e)} onPointerUp={handlePointerUp} onResizeStart={(e) => handleResizeStart('name', e)} onResizeMove={handleResizeMove} onResizeEnd={handleResizeEnd} />
+          <PreviewBox label="NOMOR SERTIFIKAT" keyName="number" x={layout.number_position_x} y={layout.number_position_y} selected={selected === 'number'} fontSize={layout.number_font_size} surfaceRef={surfaceRef} onPointerDown={(e) => handlePointerDown('number', e)} onPointerMove={(e) => handlePointerMove('number', e)} onPointerUp={handlePointerUp} onResizeStart={(e) => handleResizeStart('number', e)} onResizeMove={handleResizeMove} onResizeEnd={handleResizeEnd} />
+          <ResizeableOverlay image={certs.find((c) => c.qr_code)?.qr_code} label="QR verifikasi peserta (contoh)" keyName="qr" x={layout.qr_position_x} y={layout.qr_position_y} width={layout.qr_size} height={layout.qr_size} square selected={selected === 'qr'} onPointerDown={(e) => handlePointerDown('qr', e)} onPointerMove={(e) => handlePointerMove('qr', e)} onPointerUp={handlePointerUp} onResizeStart={(e) => handleResizeStart('qr', e)} onResizeMove={handleResizeMove} onResizeEnd={handleResizeEnd} />
+          {signaturePreview && <ResizeableOverlay image={signaturePreview} label="Barcode/tanda tangan" keyName="signature" x={layout.signature_position_x} y={layout.signature_position_y} width={layout.signature_width} height={layout.signature_height} selected={selected === 'signature'} onPointerDown={(e) => handlePointerDown('signature', e)} onPointerMove={(e) => handlePointerMove('signature', e)} onPointerUp={handlePointerUp} onResizeStart={(e) => handleResizeStart('signature', e)} onResizeMove={handleResizeMove} onResizeEnd={handleResizeEnd} />}</div><details className="mt-3 text-sm"><summary className="cursor-pointer text-ink-500">Pengaturan angka lanjutan (opsional)</summary><div className="grid md:grid-cols-3 gap-3 mt-3"><PositionInput label="Nama X (%)" value={layout.name_position_x} onChange={(v) => setLayoutValue('name_position_x', v)} /><PositionInput label="Nama Y (%)" value={layout.name_position_y} onChange={(v) => setLayoutValue('name_position_y', v)} /><PositionInput label="Nomor X (%)" value={layout.number_position_x} onChange={(v) => setLayoutValue('number_position_x', v)} /><PositionInput label="Nomor Y (%)" value={layout.number_position_y} onChange={(v) => setLayoutValue('number_position_y', v)} /><PositionInput label="QR X (%)" value={layout.qr_position_x} onChange={(v) => setLayoutValue('qr_position_x', v)} /><PositionInput label="QR Y (%)" value={layout.qr_position_y} onChange={(v) => setLayoutValue('qr_position_y', v)} /><PositionInput label="Tanda tangan X (%)" value={layout.signature_position_x} onChange={(v) => setLayoutValue('signature_position_x', v)} /><PositionInput label="Tanda tangan Y (%)" value={layout.signature_position_y} onChange={(v) => setLayoutValue('signature_position_y', v)} /></div></details></div>
         <label className="flex items-center gap-2 text-sm text-ink-700"><input type="checkbox" checked={applyAll} onChange={(e) => setApplyAll(e.target.checked)} /> Terapkan nomor ke semua sertifikat</label>
         <button type="submit" disabled={saving || loadingConfig} className="btn-primary"><Save className="w-4 h-4" /> {saving ? 'Menyimpan...' : 'Simpan tata letak & buat pratinjau'}</button>
       </form>
@@ -371,20 +398,27 @@ function PositionInput({ label, value, onChange }) {
   return <label className="label">{label}<input className="input mt-1" type="number" step="0.01" min="0" max="100" value={value ?? 0} onChange={(e) => onChange(e.target.value)} /></label>
 }
 
-function PreviewBox({ label, x, y, selected, fontSize, surfaceRef, onPointerDown, onPointerMove, onPointerUp }) {
+function PreviewBox({ label, x, y, selected, fontSize, surfaceRef, onPointerDown, onPointerMove, onPointerUp, onResizeStart, onResizeMove, onResizeEnd }) {
   const [displaySize, setDisplaySize] = useState(10)
   useEffect(() => {
     const update = () => {
       const surface = surfaceRef.current
       if (!surface) return
-      const image = surface.querySelector('img[alt="Pratinjau template"]')
-      const nativeWidth = image?.naturalWidth || 0
-      const scale = nativeWidth ? surface.clientWidth / nativeWidth : 1
-      setDisplaySize(Math.max(8, Math.min(72, Number(fontSize || 12) * (96 / 72) * scale)))
+      // PDF uses A4 landscape (841.89 pt wide), not the uploaded image's pixel width.
+      const scale = surface.clientWidth / 841.89
+      setDisplaySize(Math.max(6, Number(fontSize || 12) * scale))
     }
     update()
     window.addEventListener('resize', update)
     return () => window.removeEventListener('resize', update)
   }, [fontSize, surfaceRef])
-  return <button type="button" className={`absolute z-10 -translate-x-1/2 -translate-y-1/2 border-2 border-dashed bg-white/75 px-2 py-1 font-bold cursor-move touch-none ${selected ? 'border-brand-700 text-brand-900' : 'border-slate-400 text-slate-700'}`} style={{ left: `${x}%`, top: `${y}%`, fontSize: `${displaySize}px` }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>{label}</button>
+  return <div className={`absolute z-10 -translate-x-1/2 -translate-y-1/2 border-2 border-dashed bg-white/75 px-2 py-1 font-bold cursor-move touch-none ${selected ? 'border-brand-700 text-brand-900' : 'border-slate-400 text-slate-700'}`} style={{ left: `${x}%`, top: `${y}%`, fontSize: `${displaySize}px` }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>{label}{selected && <ResizeHandle onPointerDown={onResizeStart} onPointerMove={onResizeMove} onPointerUp={onResizeEnd} />}</div>
+}
+
+function ResizeableOverlay({ image, label, x, y, width, height, square, selected, onPointerDown, onPointerMove, onPointerUp, onResizeStart, onResizeMove, onResizeEnd }) {
+  return <div className={`absolute z-10 -translate-x-1/2 -translate-y-1/2 cursor-move touch-none ${selected ? 'border-2 border-emerald-600' : 'border border-emerald-400'}`} style={{ left: `${x}%`, top: `${y}%`, width: `${width}%`, ...(square ? { aspectRatio: '1 / 1' } : { height: `${height}%` }) }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>{image ? <img src={image} alt={label} className="w-full h-full object-contain pointer-events-none" /> : <div className="w-full h-full bg-white flex items-center justify-center text-[9px] text-slate-700">QR contoh</div>}{selected && <ResizeHandle onPointerDown={onResizeStart} onPointerMove={onResizeMove} onPointerUp={onResizeEnd} />}</div>
+}
+
+function ResizeHandle({ onPointerDown, onPointerMove, onPointerUp }) {
+  return <span aria-label="Ubah ukuran" className="absolute -right-2 -bottom-2 w-4 h-4 rounded-full bg-brand-700 border-2 border-white cursor-nwse-resize touch-none" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} />
 }

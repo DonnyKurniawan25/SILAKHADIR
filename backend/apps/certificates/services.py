@@ -126,6 +126,10 @@ def generate_certificates_for_event(event, regenerate: bool = False,
         has_final_inputs = bool(template and template.background_image and
                                 template.signature_image and cert.certificate_number)
         cert.status = Certificate.Status.AVAILABLE if has_final_inputs else Certificate.Status.PROCESSING
+        if not cert.qr_code:
+            verify_url = f'{settings.FRONTEND_URL}/verifikasi/{cert.verification_token}'
+            qr_file = generate_qr_image(verify_url, logo_path=get_institution_logo_path())
+            cert.qr_code.save(f'{cert.id}.png', qr_file, save=False)
         if template and template.background_image:
             pdf_file = generate_certificate_pdf(cert)
             if pdf_file:

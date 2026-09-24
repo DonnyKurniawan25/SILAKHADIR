@@ -97,6 +97,22 @@ class CertificateWorkflowTests(TestCase):
         self.assertTrue(get_response.data['template_image_url'])
         self.assertTrue(get_response.data['signature_image_url'])
 
+    def test_qr_size_is_saved_and_used_by_pdf_renderer(self):
+        from unittest.mock import Mock
+        from apps.certificates.utils import generate_certificate_pdf
+        response = self.client.post(self.url + 'configure/', {
+            'template_image': image(), 'signature_image': image('sig.png'),
+            'certificate_number': 'S-QR', 'qr_position_x': '34',
+            'qr_position_y': '77', 'qr_size': '17',
+        }, format='multipart')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['layout']['qr_size'], 17)
+        self.assertEqual(self.client.get(self.url + 'configure/').data['layout']['qr_size'], 17)
+        cert = Certificate.objects.get(event=self.event, participant=self.participant)
+        self.assertTrue(cert.qr_code)
+        pdf = generate_certificate_pdf(cert)
+        self.assertTrue(pdf.read().startswith(b'%PDF'))
+
     def test_configure_omitted_layout_values_preserve_saved_values(self):
         template = CertificateTemplate.objects.create(
             name='T', background_image=image('bg.png'),

@@ -25,6 +25,7 @@ class CertificateTemplate(models.Model):
     date_position_y = models.FloatField(default=70)
     qr_position_x = models.FloatField(default=10)
     qr_position_y = models.FloatField(default=85)
+    qr_size = models.FloatField(default=14)
     number_position_x = models.FloatField(default=50)
     number_position_y = models.FloatField(default=30)
     signature_position_x = models.FloatField(default=82)

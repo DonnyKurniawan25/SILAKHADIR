@@ -37,7 +37,7 @@ def validate_uploaded_image(upload, *, max_size=10 * 1024 * 1024):
 CERTIFICATE_LAYOUT_FIELDS = (
     'name_position_x', 'name_position_y', 'event_position_x', 'event_position_y',
     'date_position_x', 'date_position_y', 'qr_position_x', 'qr_position_y',
-    'number_position_x', 'number_position_y', 'signature_position_x',
+    'number_position_x', 'number_position_y', 'qr_size', 'signature_position_x',
     'signature_position_y', 'signature_width', 'signature_height',
     'name_font_size', 'event_font_size', 'date_font_size', 'number_font_size',
 )
@@ -299,7 +299,7 @@ def generate_certificate_pdf(certificate) -> ContentFile:
                 template.qr_position_x if template else 10,
                 template.qr_position_y if template else 85,
             )
-            qr_size = 90
+            qr_size = page_w * ((template.qr_size if template else 14) / 100)
             c.drawImage(qr_img, qr_x - qr_size / 2, qr_y - qr_size / 2,
                         width=qr_size, height=qr_size, mask='auto')
         except Exception:

@@ -201,6 +201,7 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
                 'date_position_y': layout_value('date_position_y', 70),
                 'qr_position_x': layout_value('qr_position_x', 10),
                 'qr_position_y': layout_value('qr_position_y', 85),
+                'qr_size': layout_value('qr_size', 14, 2, 60),
                 'number_position_x': layout_value('number_position_x', 50),
                 'number_position_y': layout_value('number_position_y', 30),
                 'signature_position_x': layout_value('signature_position_x', 82),
