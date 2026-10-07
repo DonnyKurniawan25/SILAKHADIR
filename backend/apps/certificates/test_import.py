@@ -97,6 +97,27 @@ class FinalImportTests(TestCase):
         downloaded = self.client.get(response.data['items'][0]['preview_url'])
         self.assertEqual(b''.join(downloaded.streaming_content), original)
 
+    def test_large_separate_final_pdf_remains_byte_exact(self):
+        from pypdf import PdfWriter
+        from pypdf.generic import DecodedStreamObject, NameObject
+        source = pdf('Siti Aminah')
+        reader = PdfReader(source)
+        writer = PdfWriter()
+        writer.clone_document_from_reader(reader)
+        page = writer.pages[0]
+        stream = DecodedStreamObject()
+        stream.set_data(page.get_contents().get_data() + b'\n% QA padding\n' * 100000)
+        page[NameObject('/Contents')] = writer._add_object(stream)
+        output = io.BytesIO()
+        writer.write(output)
+        original = output.getvalue()
+        self.assertGreater(len(original), 1_000_000)
+        response = self.preview([SimpleUploadedFile('final.pdf', original, content_type='application/pdf')], mode='separate')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self.apply(response).status_code, 200)
+        with Certificate.objects.get().pdf_file.open('rb') as final:
+            self.assertEqual(final.read(), original)
+
     def test_match_refuses_overlaps_duplicates_and_signers(self):
         self.person_named('Siti Aminah Putri', 2)
         response = self.preview([pdf('Diberikan kepada\nSiti Aminah Putri')])

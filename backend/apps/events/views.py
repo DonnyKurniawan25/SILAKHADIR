@@ -67,8 +67,7 @@ class EventViewSet(viewsets.ModelViewSet):
                 event.thumbnail.save(f'{uuid.uuid4().hex}.{extension}', upload, save=False)
                 new_name = event.thumbnail.name
                 event.save(update_fields=['thumbnail', 'updated_at'])
-                if previous and previous != new_name:
-                    transaction.on_commit(lambda: delete_thumbnail(storage, previous))
+                # Shared-reference-safe cleanup is scheduled by media signals.
         except Exception:
             if new_name:
                 delete_thumbnail(storage, new_name)

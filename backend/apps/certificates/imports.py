@@ -127,10 +127,10 @@ def delete_files(storage, paths):
 
 
 def purge_expired(owner):
-    storage = private_storage()
-    for batch in CertificateImportBatch.objects.filter(owner=owner, expires_at__lte=timezone.now(), applied_at__isnull=True):
-        delete_files(storage, batch.items.values_list('private_path', flat=True))
-        batch.delete()
+    # Deleting batches cascades to items; commit-safe handlers remove their PDFs.
+    CertificateImportBatch.objects.filter(
+        owner=owner, expires_at__lte=timezone.now(), applied_at__isnull=True,
+    ).delete()
 
 
 def create_preview(event, owner, files, data):
@@ -171,6 +171,10 @@ def _create_preview(event, owner, files, data, temporary_files):
             pages_total += count
             if pages_total > 200:
                 raise ValidationError('Total maksimal 200 halaman.')
+            if mode == 'combined':
+                from apps.media.optimization import _has_signature
+                if re.search(rb'/ByteRange\b|/Type\s*/Sig\b|/FT\s*/Sig\b', content) or _has_signature(reader):
+                    raise ValidationError('PDF bertanda tangan digital harus diunggah terpisah, bukan dipecah, agar tanda tangan tetap valid.')
             groups = [(1, count)] if mode == 'separate' else groups_for(count, data)
             for start, end in groups:
                 text = '\n'.join(reader.pages[i].extract_text() or '' for i in range(start - 1, end))
@@ -244,9 +248,16 @@ def apply_import(event, owner, data):
         raise ValidationError('replace_existing harus boolean.')
     if not isinstance(assignments, list) or not assignments or len(assignments) > 200:
         raise ValidationError('assignments harus list non-kosong, maksimal 200.')
-    saved, old_files = [], []
+    saved = []
     private = private_storage()
-    final_storage = Certificate._meta.get_field('pdf_file').storage
+    field_storage = Certificate._meta.get_field('pdf_file').storage
+    # Final approved certificates are authoritative artifacts: preserve bytes,
+    # including unsigned Canva PDFs whose signature may be visual rather than digital.
+    final_storage = FileSystemStorage(
+        location=field_storage.location, base_url=field_storage.base_url,
+        file_permissions_mode=field_storage.file_permissions_mode,
+        directory_permissions_mode=field_storage.directory_permissions_mode,
+    )
     try:
         with transaction.atomic():
             Event.objects.select_for_update().get(pk=event.pk)
@@ -290,8 +301,6 @@ def apply_import(event, owner, data):
             certificates = []
             for item, participant, cert, number in validated:
                 cert = cert or Certificate(event=event, participant=participant)
-                if cert.pdf_file:
-                    old_files.append(cert.pdf_file.name)
                 cert.source = Certificate.Source.UPLOADED
                 cert.status = Certificate.Status.AVAILABLE
                 cert.certificate_number = number
@@ -309,7 +318,7 @@ def apply_import(event, owner, data):
             batch.applied_at = timezone.now()
             batch.save(update_fields=['applied_at'])
             private_paths = list(batch.items.values_list('private_path', flat=True))
-            transaction.on_commit(lambda: delete_files(final_storage, old_files))
+            # Old final PDFs are removed by reference-safe media lifecycle signals.
             transaction.on_commit(lambda: delete_files(private, private_paths))
         return certificates
     except Exception:

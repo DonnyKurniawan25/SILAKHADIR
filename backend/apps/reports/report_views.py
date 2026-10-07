@@ -99,7 +99,7 @@ class EventReportPhotoDetailView(APIView):
     def delete(self, request, event_id, photo_id):
         event = get_object_or_404(Event, id=event_id)
         photo = get_object_or_404(EventReportPhoto, id=photo_id, report__event=event)
-        photo.image.delete(save=False)
+        # The media lifecycle handler removes the file only after DB commit.
         photo.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -173,7 +173,7 @@ class EventReportAttachmentDetailView(APIView):
     def delete(self, request, event_id, att_id):
         event = get_object_or_404(Event, id=event_id)
         att = get_object_or_404(EventReportAttachment, id=att_id, report__event=event)
-        att.file.delete(save=False)
+        # The media lifecycle handler removes the file only after DB commit.
         att.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 

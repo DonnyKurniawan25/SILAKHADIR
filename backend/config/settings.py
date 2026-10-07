@@ -40,7 +40,14 @@ INSTALLED_APPS = [
     'apps.settings_app',
     'apps.news',
     'apps.kinerja',
+    'apps.media.apps.MediaConfig',
 ]
+
+# Transform incoming media before writing to disk; static files stay unchanged.
+STORAGES = {
+    'default': {'BACKEND': 'apps.media.storage.OptimizedMediaStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+}
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
