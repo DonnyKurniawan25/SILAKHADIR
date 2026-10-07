@@ -15,6 +15,8 @@ class Participant(models.Model):
 
     nik = models.CharField(
         max_length=16,
+        blank=True,
+        null=True,
         validators=[RegexValidator(r'^[0-9]{16}$', 'NIK harus 16 digit angka.')],
     )
     nip = models.CharField(
@@ -40,6 +42,11 @@ class Participant(models.Model):
                 name='unique_participant_per_event',
             )
         ]
+
+    def save(self, *args, **kwargs):
+        if self.nik == '':
+            self.nik = None
+        super().save(*args, **kwargs)
 
     def __str__(self):
         if self.nip:

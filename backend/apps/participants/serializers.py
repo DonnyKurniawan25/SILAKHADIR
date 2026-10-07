@@ -17,6 +17,9 @@ class ParticipantSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         )
         read_only_fields = ('id', 'event', 'created_at', 'updated_at')
+        # Nullable storage supports XLSX NIP-only participants, not a change to
+        # the existing required-NIK form/API contract.
+        extra_kwargs = {'nik': {'required': True, 'allow_blank': False, 'allow_null': False}}
 
     def validate_nik(self, value):
         value = (value or '').strip()

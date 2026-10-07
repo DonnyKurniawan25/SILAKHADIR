@@ -43,12 +43,12 @@ class AttendanceImportXlsxView(AttendanceXlsxBaseView):
         dry_run = value != 'false'
         result = {'rows': [], 'created': 0, 'updated': 0, 'errors': [], 'dry_run': dry_run}
         if value not in ('true', 'false'):
-            result['errors'] = [{'row': None, 'message': 'dry_run harus string true atau false.'}]
+            result['errors'] = [{'row': None, 'column': None, 'message': 'dry_run harus string true atau false.', 'hint': 'Gunakan true untuk preview atau false untuk menyimpan.'}]
             return Response(result, status=400)
         try:
             rows = read_rows(request.FILES.get('file'))
         except XlsxError as exc:
-            result['errors'] = [{'row': None, 'message': str(exc)}]
+            result['errors'] = [{'row': None, 'column': None, 'message': str(exc), 'hint': 'Periksa format dan keamanan workbook; gunakan template XLSX.'}]
             return Response(result, status=400)
         if dry_run:
             result = preview(event, rows, True)
@@ -64,5 +64,5 @@ class AttendanceImportXlsxView(AttendanceXlsxBaseView):
             except IntegrityError:
                 # All writes were rolled back; do not leak IDs from rolled back rows.
                 result = preview(event, rows, False)
-                result['errors'].append({'row': None, 'message': 'Data berubah/konflik saat impor. Ulangi preview; tidak ada data yang disimpan.'})
+                result['errors'].append({'row': None, 'column': None, 'message': 'Data berubah/konflik saat impor. Ulangi preview; tidak ada data yang disimpan.', 'hint': 'Periksa identitas peserta dan ulangi preview.'})
         return Response(result, status=400 if result['errors'] else 200)

@@ -49,7 +49,8 @@ class AttendanceXlsxTests(TestCase):
         self.assertEqual([c.value for c in wb['Absensi'][1]], HEADERS)
         self.assertIn('Petunjuk', wb.sheetnames)
         self.assertIn('Contoh', wb.sheetnames)
-        self.assertEqual(wb['Contoh']['A2'].data_type, 's')
+        self.assertEqual(wb['Contoh']['B2'].data_type, 's')
+        self.assertEqual(wb['Contoh']['A3'].data_type, 's')
         response = self.upload(workbook=wb, dry_run='false')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['created'], 0)
@@ -124,7 +125,7 @@ class AttendanceXlsxTests(TestCase):
                 row[column] = int(row[column])
                 self.assertEqual(self.upload([row]).status_code, 400)
 
-    def test_optional_nip_and_required_nik(self):
+    def test_nik_only_and_at_least_one_identity_required(self):
         row = [*VALID]
         row[1] = ''
         self.assertEqual(self.upload([row], 'false').status_code, 200)
@@ -245,7 +246,7 @@ class AttendanceXlsxTests(TestCase):
 
     def test_database_failure_rolls_back_all_rows(self):
         row = [*VALID]
-        row[0], row[2] = '1123456789012345', 'Second Name'
+        row[0], row[1], row[2] = '1123456789012345', '112345678901234567', 'Second Name'
         original = Attendance.objects.update_or_create
         calls = 0
 

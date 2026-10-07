@@ -73,15 +73,21 @@ def workbook_bytes(event, template=False):
         for text in (
             'Isi hanya sheet Absensi; sheet Contoh tidak diimpor.',
             'Jangan ubah nama/urutan delapan kolom pada baris pertama.',
-            'NIK wajib 16 digit; NIP opsional 18 digit. Simpan NIK, NIP, No HP sebagai TEXT, bukan angka.',
-            'Nama Lengkap wajib. Status wajib hadir atau tidak_hadir.',
+            'Nama Lengkap wajib dan minimal satu identitas: ASN dengan NIP 18 digit boleh tanpa NIK; tanpa NIP wajib NIK 16 digit.',
+            'Simpan NIK dan NIP sebagai Text sebelum tempel dari sumber asli; angka ilmiah/digit yang berubah tidak dapat dipulihkan.',
+            'Instansi, Jabatan, No HP dan Email opsional. Status kosong menjadi hadir; pilihan hadir atau tidak_hadir.',
+            'NIK/NIP kosong, - atau — dianggap tidak diisi. NIK hanya digunakan ulang dari NIP persis dengan nama cocok dan identitas konsisten; tidak ditebak.',
+            'No HP sebaiknya Text agar nol awal tidak hilang. Angka bulat maksimal 15 digit diterima tanpa menambahkan nol awal.',
             'Batas 5000 baris data dan ukuran file 5 MB. Rumus/formula tidak diperbolehkan.',
-            'NIK/nama duplikat atau identitas ambigu ditolak. Kolom opsional kosong tidak menghapus data lama.',
+            'NIK/NIP/nama duplikat atau identitas ambigu ditolak. Kolom opsional kosong tidak menghapus data lama.',
             'Preview tidak menyimpan data. Konfirmasikan dry_run=false untuk menyimpan seluruh baris valid secara atomik.',
         ):
             _text_cell(instructions.cell(instructions.max_row + (1 if instructions['A1'].value else 0), 1), text)
         instructions.column_dimensions['A'].width = 120
-        _sheet(wb, 'Contoh', [['0123456789012345', '012345678901234567', 'Nama Contoh', 'Diskominfo', 'Staf', '08123456789', 'contoh@example.com', 'hadir']])
+        _sheet(wb, 'Contoh', [
+            ['', '012345678901234567', 'Contoh ASN NIP saja', 'Diskominfo', '', '08123456789', '', ''],
+            ['0123456789012345', '', 'Contoh non-ASN NIK saja', '', '', '', '', 'hadir'],
+        ])
     out = BytesIO()
     wb.save(out)
     return out.getvalue()
@@ -169,9 +175,19 @@ def read_rows(upload):
                 value = cell.value if cell else None
                 if cell and cell.data_type == 'f':
                     errors.append('Formula tidak diperbolehkan.')
-                if field in ('nik', 'nip', 'phone') and value is not None and not isinstance(value, str):
-                    errors.append(f'{HEADERS[index]} harus disimpan sebagai teks, bukan angka (risiko kehilangan digit).')
+                if field in ('nik', 'nip') and value is not None and not isinstance(value, str):
+                    errors.append({'column': HEADERS[index],
+                        'message': f'{HEADERS[index]}: format angka ilmiah/digit mungkin berubah; ubah kolom ke Text dan tempel ulang dari sumber asli.',
+                        'hint': 'Ubah kolom ke Text dan tempel ulang dari sumber asli; jangan mengubah angka yang sudah dibulatkan menjadi teks.'})
+                if field == 'phone' and value is not None and not isinstance(value, str):
+                    if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value < 10 ** 15 and value == int(value):
+                        value = str(int(value))
+                    else:
+                        errors.append({'column': 'No HP', 'message': 'No HP numerik tidak aman; gunakan teks dari sumber asli.', 'hint': 'Gunakan Text; nol awal yang hilang tidak dapat dipulihkan.'})
                 values[field] = str(value).strip() if value is not None else ''
+                if field in ('nik', 'nip') and values[field] in ('-', '—'):
+                    values[field] = ''
+            values['status'] = values['status'] or Attendance.Status.HADIR
             rows.append({'row': number, **values, '_errors': errors})
         return rows
     except XlsxError:
@@ -189,39 +205,107 @@ def _name(value):
 
 def preview(event, source_rows, dry_run):
     participants = list(Participant.objects.filter(event=event))
-    by_nik = {p.nik: p for p in participants}
-    by_name = defaultdict(set)
+    by_nik, by_nip, by_name = defaultdict(list), defaultdict(list), defaultdict(set)
     for p in participants:
-        by_name[_name(p.full_name)].add(p.nik)
+        # Never put null/empty identities in identity maps.
+        if p.nik:
+            by_nik[p.nik].append(p)
+        if p.nip:
+            by_nip[p.nip].append(p)
+        by_name[_name(p.full_name)].add(p.pk)
+    missing_nik_nips = {r['nip'] for r in source_rows if not r['nik'] and r['nip']}
+    across_nip = defaultdict(list)
+    for p in Participant.objects.filter(nip__in=missing_nik_nips).exclude(event=event):
+        across_nip[p.nip].append(p)
     attendances = {a.participant_id: a for a in Attendance.objects.filter(event=event)}
-    seen_niks, seen_names = {}, {}
+    seen = {f: {} for f in ('nip', 'full_name')}
+    seen_niks = {}
     result = {'rows': [], 'created': 0, 'updated': 0, 'errors': [], 'dry_run': dry_run}
     for source in source_rows:
         row = {k: v for k, v in source.items() if k != '_errors'}
-        messages = list(source['_errors'])
-        p = by_nik.get(row['nik'])
+        errors = []
+
+        def error(column, message, hint='Periksa identitas pada sumber asli dan data peserta; jangan menebak identitas.'):
+            errors.append({'row': row['row'], 'column': column, 'message': message, 'hint': hint})
+
+        for message in source['_errors']:
+            if isinstance(message, dict):
+                errors.append({'row': row['row'], **message})
+            else:
+                error(None, message)
+        candidate = Participant(event=event)
+        parse_error_columns = {issue.get('column') for issue in source['_errors'] if isinstance(issue, dict)}
+        for field in FIELDS[:-1]:
+            # An unsafe numeric identity already has an actionable source error.
+            # Do not bury it under additional regex/length errors for the same cell.
+            if HEADERS[FIELDS.index(field)] in parse_error_columns:
+                continue
+            try:
+                Participant._meta.get_field(field).clean(row[field] or (None if field == 'nik' else ''), candidate)
+            except ValidationError as exc:
+                for message in exc.messages:
+                    error(HEADERS[FIELDS.index(field)], message, 'Perbaiki nilai kolom sesuai format dan panjang yang diminta.')
+        if not row['nik'] and not row['nip']:
+            error('NIK/NIP', 'Isi minimal satu identitas: NIP 18 digit untuk ASN atau NIK 16 digit jika NIP tidak ada.')
+        if row['status'] not in Attendance.Status.values:
+            error('Status', 'Status harus hadir atau tidak_hadir.', 'Kosongkan untuk default hadir atau pilih hadir/tidak_hadir.')
+        name = _name(row['full_name'])
+        for field in seen:
+            value = name if field == 'full_name' else row[field]
+            if not value:
+                continue
+            column = HEADERS[FIELDS.index(field)]
+            if value in seen[field]:
+                error(column, f'{column} duplikat/ambigu dengan baris {seen[field][value]}.', 'Hapus duplikat; satu baris per peserta.')
+            seen[field][value] = row['row']
+
+        nik_matches = by_nik.get(row['nik'], []) if row['nik'] else []
+        nip_matches = by_nip.get(row['nip'], []) if row['nip'] else []
+        for column, matches in (('NIK', nik_matches), ('NIP', nip_matches)):
+            if len(matches) > 1:
+                error(column, f'{column} cocok dengan beberapa peserta pada kegiatan ini; identitas ambigu.')
+        nik_p = nik_matches[0] if len(nik_matches) == 1 else None
+        nip_p = nip_matches[0] if len(nip_matches) == 1 else None
+        if nik_p and nip_p and nik_p.pk != nip_p.pk:
+            error('NIK/NIP', 'NIK dan NIP menunjuk peserta berbeda pada kegiatan ini.')
+        p = nik_p or nip_p
+        if p:
+            if _name(p.full_name) != name:
+                error('Nama Lengkap', 'NIK/NIP sudah terdaftar dengan nama berbeda pada kegiatan ini.')
+            if row['nik'] and p.nik and row['nik'] != p.nik:
+                error('NIK', 'NIP sudah terdaftar dengan NIK berbeda.')
+            if row['nip'] and p.nip and row['nip'] != p.nip:
+                error('NIP', 'NIK sudah terdaftar dengan NIP berbeda.')
+        if not row['nik'] and row['nip']:
+            # Exact NIP only; names are compatibility checks, never lookup keys.
+            matches = nip_matches + across_nip.get(row['nip'], [])
+            known_niks = {match.nik for match in matches if match.nik}
+            if any(_name(match.full_name) != name for match in matches):
+                error('Nama Lengkap', 'NIP ditemukan dengan nama berbeda; konfirmasi identitas sebelum impor.')
+            if len(known_niks) > 1:
+                error('NIP', 'NIP memiliki beberapa NIK berbeda antar kegiatan; identitas konflik.')
+            elif known_niks:
+                row['nik'] = next(iter(known_niks))
+                recovered = by_nik.get(row['nik'], [])
+                if recovered:
+                    if len(recovered) != 1 or (p and recovered[0].pk != p.pk):
+                        error('NIK/NIP', 'NIK dari NIP menunjuk peserta berbeda/ambigu pada kegiatan ini.')
+                    elif _name(recovered[0].full_name) != name or (recovered[0].nip and recovered[0].nip != row['nip']):
+                        error('NIK/NIP', 'NIK dari NIP bertentangan dengan nama/NIP peserta pada kegiatan ini.')
+                    else:
+                        p = recovered[0]
+        # Check effective NIK after recovery as well as supplied identities.
+        if row['nik']:
+            if row['nik'] in seen_niks:
+                error('NIK', f'NIK duplikat/konflik dengan baris {seen_niks[row["nik"]]}.', 'Hapus duplikat atau periksa NIP yang menghasilkan NIK sama.')
+            seen_niks[row['nik']] = row['row']
+        if name and by_name.get(name, set()) - ({p.pk} if p else set()):
+            error('Nama Lengkap', 'Nama sudah terdaftar pada peserta lain dalam kegiatan ini; identitas ambigu.')
         a = attendances.get(p.pk) if p else None
         row.update(participant_id=str(p.pk) if p else None, attendance_id=str(a.pk) if a else None, action=None)
-        candidate = Participant(event=event)
-        for field in FIELDS[:-1]:
-            try:
-                Participant._meta.get_field(field).clean(row[field], candidate)
-            except ValidationError as exc:
-                messages.extend(f'{HEADERS[FIELDS.index(field)]}: {m}' for m in exc.messages)
-        if row['status'] not in Attendance.Status.values:
-            messages.append('Status harus hadir atau tidak_hadir.')
-        nik, name = row['nik'], _name(row['full_name'])
-        if nik in seen_niks:
-            messages.append(f'NIK duplikat dengan baris {seen_niks[nik]}.')
-        if name and name in seen_names:
-            messages.append(f'Nama duplikat/ambigu dengan baris {seen_names[name]}.')
-        seen_niks[nik], seen_names[name] = row['row'], row['row']
-        if p and _name(p.full_name) != name:
-            messages.append('NIK sudah terdaftar pada kegiatan ini dengan nama berbeda.')
-        if name and by_name[name] - {nik}:
-            messages.append('Nama sudah terdaftar pada kegiatan ini dengan NIK lain; identitas ambigu.')
-        if messages:
-            result['errors'].append({'row': row['row'], 'message': '; '.join(messages)})
+        row['nik'] = row['nik'] or None
+        if errors:
+            result['errors'].extend(errors)
         else:
             row['action'] = 'updated' if a else 'created'
             result[row['action']] += 1
@@ -232,11 +316,17 @@ def preview(event, source_rows, dry_run):
 def apply_rows(event, result):
     """Caller owns atomic transaction and event lock; validate before any writes."""
     for row in result['rows']:
-        defaults = {field: row[field] for field in FIELDS[:-1] if row[field] != ''}
-        defaults.pop('nik', None)
+        defaults = {field: row[field] for field in FIELDS[:-1] if row[field] not in ('', None)}
         if row['nip']:
             defaults['is_asn'] = True
-        participant, _ = Participant.objects.update_or_create(event=event, nik=row['nik'], defaults=defaults)
+        if row['participant_id']:
+            # Includes a NIP-only participant acquiring a verified NIK later.
+            participant = Participant.objects.get(event=event, pk=row['participant_id'])
+            for field, value in defaults.items():
+                setattr(participant, field, value)
+            participant.save()
+        else:
+            participant = Participant.objects.create(event=event, nik=row['nik'], **{k: v for k, v in defaults.items() if k != 'nik'})
         attendance, _ = Attendance.objects.update_or_create(event=event, participant=participant, defaults={'status': row['status']})
         row['participant_id'] = str(participant.pk)
         row['attendance_id'] = str(attendance.pk)

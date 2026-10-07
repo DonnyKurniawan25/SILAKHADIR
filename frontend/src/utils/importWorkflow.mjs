@@ -41,10 +41,35 @@ export function validateAssignments(items, participants) {
   return ''
 }
 
-export function importError(error, fallback) {
+const FIELD_LABELS = { nik: 'NIK', nip: 'NIP', full_name: 'Nama Lengkap', institution: 'Instansi', position: 'Jabatan', phone: 'No HP', email: 'Email', status: 'Status', file: 'Berkas', non_field_errors: 'Validasi' }
+
+export function attendanceValidationIssues(data) {
+  if (!Array.isArray(data?.errors)) return []
+  return data.errors.flatMap((issue) => {
+    const messages = Array.isArray(issue?.message) ? issue.message : [issue?.message]
+    return messages.filter((message) => typeof message === 'string' && message.trim()).map((message) => ({
+      row: issue.row ?? '-',
+      column: typeof issue.column === 'string' ? issue.column : '',
+      message,
+      hint: typeof issue.hint === 'string' ? issue.hint : '',
+    }))
+  })
+}
+
+export function importError(error, fallback = 'Permintaan tidak dapat diproses. Coba kembali.') {
   const data = error?.response?.data
   if (typeof data?.detail === 'string') return data.detail
   if (typeof data?.message === 'string') return data.message
-  if (data && !(typeof Blob !== 'undefined' && data instanceof Blob)) return JSON.stringify(data)
+  const issues = attendanceValidationIssues(data)
+  if (issues.length) return `Ada ${issues.length} kesalahan validasi. Belum ada data yang disimpan. Lihat rincian baris, kolom, dan cara memperbaiki di bawah.`
+  if (data && typeof data === 'object' && !(typeof Blob !== 'undefined' && data instanceof Blob)) {
+    const messages = Object.entries(FIELD_LABELS).flatMap(([field, label]) => {
+      const values = Array.isArray(data[field]) ? data[field] : [data[field]]
+      return values.filter((value) => typeof value === 'string').map((value) => `${label}: ${value}`)
+    })
+    if (messages.length) return messages.join(' ')
+  }
+  if (error?.response?.status === 401) return 'Sesi masuk berakhir. Silakan masuk kembali.'
+  if (error?.response?.status === 413) return 'Berkas melebihi batas ukuran upload. Gunakan berkas yang lebih kecil.'
   return fallback
 }
