@@ -10,6 +10,7 @@ import {
 import AttendanceUploadModal from './AttendanceUploadModal'
 import { downloadAttendanceXlsx } from '../../api/finalImportApi'
 import { importError } from '../../utils/importWorkflow.mjs'
+import { certificateHistoryLabel } from '../../utils/certificateHistory.mjs'
 import { useForm } from 'react-hook-form'
 
 export default function ParticipantList({ eventId, onChanged, refreshVersion }) {
@@ -64,9 +65,14 @@ export default function ParticipantList({ eventId, onChanged, refreshVersion }) 
         : <span className="badge-gray">Belum</span>
     )},
     { key: 'certificate_status', title: 'Sertifikat', render: (p) => (
-      p.certificate_status === 'tersedia'
-        ? <span className="badge-green">Tersedia</span>
-        : <span className="badge-gray">Belum</span>
+      <div className="space-y-1">
+        <div>{p.certificate_status === 'tersedia'
+          ? <span className="badge-green">Tersedia pada kegiatan ini</span>
+          : <span className="badge-gray">Belum pada kegiatan ini</span>}</div>
+        {certificateHistoryLabel(p.certificate_history) && <div>
+          <span className="badge-green" title={(p.certificate_history.events || []).map((event) => event.title).filter(Boolean).join(' · ')}>{certificateHistoryLabel(p.certificate_history)}</span>
+        </div>}
+      </div>
     )},
     { key: 'actions', title: 'Aksi', className: 'text-right', render: (p) => (
       <div className="flex gap-1 justify-end">

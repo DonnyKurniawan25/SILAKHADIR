@@ -7,13 +7,21 @@ class ParticipantSerializer(serializers.ModelSerializer):
     attendance_status = serializers.SerializerMethodField()
     attendance_time = serializers.SerializerMethodField()
     certificate_status = serializers.SerializerMethodField()
+    certificate_history = serializers.SerializerMethodField()
+
+    def get_certificate_history(self, obj):
+        from .identity import IdentityRegistry
+        # The same serializer instance handles all rows of a ListSerializer.
+        if not hasattr(self, '_identity_registry'):
+            self._identity_registry = IdentityRegistry()
+        return self._identity_registry.participant_history(obj)
 
     class Meta:
         model = Participant
         fields = (
             'id', 'event', 'nik', 'nip', 'is_asn', 'full_name',
             'institution', 'position', 'phone', 'email',
-            'attendance_status', 'attendance_time', 'certificate_status',
+            'attendance_status', 'attendance_time', 'certificate_status', 'certificate_history',
             'created_at', 'updated_at',
         )
         read_only_fields = ('id', 'event', 'created_at', 'updated_at')
@@ -73,6 +81,12 @@ class ParticipantSerializer(serializers.ModelSerializer):
 
     def get_certificate_status(self, obj):
         cert = obj.certificates.first()
-        if not cert:
+        if not cert or not cert.pdf_file:
             return 'belum_tersedia'
+        if cert.status == 'tersedia':
+            try:
+                if not cert.pdf_file.storage.exists(cert.pdf_file.name):
+                    return 'belum_tersedia'
+            except Exception:
+                return 'belum_tersedia'
         return cert.status

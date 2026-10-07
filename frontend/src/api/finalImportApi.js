@@ -1,4 +1,5 @@
 import api from './axios'
+import { attendanceRowsPayload } from '../utils/editableAttendance.mjs'
 
 export function previewFinalCertificates(eventId, { files, mode, pagesPerParticipant, pageGroups }) {
   const body = new FormData()
@@ -14,12 +15,20 @@ export function previewFinalCertificates(eventId, { files, mode, pagesPerPartici
 export const applyFinalCertificates = (eventId, payload) =>
   api.post(`/events/${eventId}/certificates/import-apply/`, payload, { timeout: 180000 })
 
-export function importAttendanceXlsx(eventId, file, dryRun) {
+export function importAttendanceXlsx(eventId, file, dryRun = true) {
+  if (dryRun !== true) throw new Error('Simpan absensi menggunakan draf yang telah divalidasi, bukan berkas Excel asli.')
   const body = new FormData()
   body.append('file', file)
-  body.append('dry_run', dryRun ? 'true' : 'false')
+  body.append('dry_run', 'true')
   return api.post(`/events/${eventId}/attendance/import-xlsx/`, body, {
     headers: { 'Content-Type': 'multipart/form-data' }, timeout: 180000,
+  })
+}
+
+export function importAttendanceRows(eventId, rows, dryRun) {
+  const payload = { rows: attendanceRowsPayload(rows), dry_run: Boolean(dryRun) }
+  return api.post(`/events/${eventId}/attendance/import-xlsx/`, payload, {
+    headers: { 'Content-Type': 'application/json' }, timeout: 180000,
   })
 }
 

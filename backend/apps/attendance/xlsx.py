@@ -1,5 +1,4 @@
 """Strict, bounded XLSX attendance interchange. No certificate side effects."""
-from collections import defaultdict
 from io import BytesIO
 import re
 from xml.etree import ElementTree
@@ -199,24 +198,42 @@ def read_rows(upload):
             wb.close()
 
 
+def read_json_rows(data):
+    """Accept only editable values, never any client-derived matching metadata."""
+    if not isinstance(data, dict) or not isinstance(data.get('rows'), list):
+        raise XlsxError('JSON harus berisi rows berupa daftar baris.')
+    if len(data['rows']) > MAX_ROWS:
+        raise XlsxError('Maksimal 5000 baris data.')
+    rows, numbers = [], set()
+    for source in data['rows']:
+        if not isinstance(source, dict):
+            raise XlsxError('Setiap baris harus berupa object JSON.')
+        number = source.get('row')
+        if type(number) is not int or not 2 <= number <= MAX_ROWS + 1 or number in numbers:
+            raise XlsxError('Nomor row asli harus unik, berupa integer antara 2 dan 5001.')
+        numbers.add(number)
+        values, errors = {}, []
+        for index, field in enumerate(FIELDS):
+            value = source.get(field)
+            if value is not None and not isinstance(value, str):
+                errors.append({'column': HEADERS[index], 'message': f'{HEADERS[index]} harus berupa teks; format angka ilmiah/digit mungkin berubah.', 'hint': 'Tempel ulang teks persis dari sumber asli; jangan memperbaiki angka yang sudah dibulatkan.'})
+                value = ''
+            value = (value or '').strip()
+            if value.startswith('=') or any(ord(char) < 32 and char not in '\t\n\r' for char in value):
+                errors.append({'column': HEADERS[index], 'message': 'Formula/karakter kontrol tidak diperbolehkan.', 'hint': 'Gunakan nilai teks biasa dari sumber asli.'})
+            values[field] = '' if field in ('nik', 'nip') and value in ('-', '—') else value
+        values['status'] = values['status'] or Attendance.Status.HADIR
+        rows.append({'row': number, **values, '_errors': errors})
+    return rows
+
+
 def _name(value):
     return ' '.join(value.split()).casefold()
 
 
 def preview(event, source_rows, dry_run):
-    participants = list(Participant.objects.filter(event=event))
-    by_nik, by_nip, by_name = defaultdict(list), defaultdict(list), defaultdict(set)
-    for p in participants:
-        # Never put null/empty identities in identity maps.
-        if p.nik:
-            by_nik[p.nik].append(p)
-        if p.nip:
-            by_nip[p.nip].append(p)
-        by_name[_name(p.full_name)].add(p.pk)
-    missing_nik_nips = {r['nip'] for r in source_rows if not r['nik'] and r['nip']}
-    across_nip = defaultdict(list)
-    for p in Participant.objects.filter(nip__in=missing_nik_nips).exclude(event=event):
-        across_nip[p.nip].append(p)
+    from apps.participants.identity import IdentityRegistry
+    registry = IdentityRegistry()
     attendances = {a.participant_id: a for a in Attendance.objects.filter(event=event)}
     seen = {f: {} for f in ('nip', 'full_name')}
     seen_niks = {}
@@ -259,48 +276,30 @@ def preview(event, source_rows, dry_run):
                 error(column, f'{column} duplikat/ambigu dengan baris {seen[field][value]}.', 'Hapus duplikat; satu baris per peserta.')
             seen[field][value] = row['row']
 
-        nik_matches = by_nik.get(row['nik'], []) if row['nik'] else []
-        nip_matches = by_nip.get(row['nip'], []) if row['nip'] else []
-        for column, matches in (('NIK', nik_matches), ('NIP', nip_matches)):
-            if len(matches) > 1:
-                error(column, f'{column} cocok dengan beberapa peserta pada kegiatan ini; identitas ambigu.')
-        nik_p = nik_matches[0] if len(nik_matches) == 1 else None
-        nip_p = nip_matches[0] if len(nip_matches) == 1 else None
-        if nik_p and nip_p and nik_p.pk != nip_p.pk:
-            error('NIK/NIP', 'NIK dan NIP menunjuk peserta berbeda pada kegiatan ini.')
-        p = nik_p or nip_p
-        if p:
-            if _name(p.full_name) != name:
-                error('Nama Lengkap', 'NIK/NIP sudah terdaftar dengan nama berbeda pada kegiatan ini.')
-            if row['nik'] and p.nik and row['nik'] != p.nik:
-                error('NIK', 'NIP sudah terdaftar dengan NIK berbeda.')
-            if row['nip'] and p.nip and row['nip'] != p.nip:
-                error('NIP', 'NIK sudah terdaftar dengan NIP berbeda.')
-        if not row['nik'] and row['nip']:
-            # Exact NIP only; names are compatibility checks, never lookup keys.
-            matches = nip_matches + across_nip.get(row['nip'], [])
-            known_niks = {match.nik for match in matches if match.nik}
-            if any(_name(match.full_name) != name for match in matches):
-                error('Nama Lengkap', 'NIP ditemukan dengan nama berbeda; konfirmasi identitas sebelum impor.')
-            if len(known_niks) > 1:
-                error('NIP', 'NIP memiliki beberapa NIK berbeda antar kegiatan; identitas konflik.')
-            elif known_niks:
-                row['nik'] = next(iter(known_niks))
-                recovered = by_nik.get(row['nik'], [])
-                if recovered:
-                    if len(recovered) != 1 or (p and recovered[0].pk != p.pk):
-                        error('NIK/NIP', 'NIK dari NIP menunjuk peserta berbeda/ambigu pada kegiatan ini.')
-                    elif _name(recovered[0].full_name) != name or (recovered[0].nip and recovered[0].nip != row['nip']):
-                        error('NIK/NIP', 'NIK dari NIP bertentangan dengan nama/NIP peserta pada kegiatan ini.')
-                    else:
-                        p = recovered[0]
+        invalid_identity_fields = [f for f in ('nik', 'nip', 'full_name') if any(issue['column'] == HEADERS[FIELDS.index(f)] for issue in errors)]
+        lookup_row = dict(row)
+        metadata, p = registry.resolve(lookup_row, event.pk)
+        if invalid_identity_fields:
+            p = None
+            if metadata['system_status'] != 'ambiguous':
+                metadata['system_status'] = 'conflict'
+                metadata['correction_fields'] = [f for f in ('nik', 'nip', 'full_name') if f in metadata['correction_fields'] or f in invalid_identity_fields]
+            metadata['certificate_history'] = {'has_certificates': False, 'count': 0, 'events': []}
+        else:
+            row.update({f: lookup_row[f] for f in ('nik', 'nip')})
+        row.update(metadata)
+        if row['system_status'] == 'ambiguous':
+            error('NIP' if row['nip'] else 'NIK', 'Beberapa catatan sistem memiliki identitas/nama bertentangan; identitas ambigu.', 'Periksa catatan lintas kegiatan; jangan memilih identitas berdasarkan nama saja.')
+        for field in row['correction_fields']:
+            if field in invalid_identity_fields or not row['system_record']:
+                continue
+            expected = row['system_record'][field]
+            error(HEADERS[FIELDS.index(field)], f'{HEADERS[FIELDS.index(field)]} berbeda dengan data sistem: {expected}.', f'Konfirmasi sumber asli; nilai sistem yang dikenal: {expected}.')
         # Check effective NIK after recovery as well as supplied identities.
         if row['nik']:
             if row['nik'] in seen_niks:
                 error('NIK', f'NIK duplikat/konflik dengan baris {seen_niks[row["nik"]]}.', 'Hapus duplikat atau periksa NIP yang menghasilkan NIK sama.')
             seen_niks[row['nik']] = row['row']
-        if name and by_name.get(name, set()) - ({p.pk} if p else set()):
-            error('Nama Lengkap', 'Nama sudah terdaftar pada peserta lain dalam kegiatan ini; identitas ambigu.')
         a = attendances.get(p.pk) if p else None
         row.update(participant_id=str(p.pk) if p else None, attendance_id=str(a.pk) if a else None, action=None)
         row['nik'] = row['nik'] or None

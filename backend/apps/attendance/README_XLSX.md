@@ -9,8 +9,21 @@ Backend API (prefix `/api`):
 Semua endpoint hanya untuk role `admin`/`superadmin`. GET mengembalikan attachment
 `.xlsx` dengan MIME `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.
 
-POST menggunakan `multipart/form-data`: `file` wajib file `.xlsx`; `dry_run`
+POST tetap menerima `multipart/form-data`: `file` wajib file `.xlsx`; `dry_run`
 opsional berupa string `true` (default) atau `false`. Nilai lain ditolak.
+
+Endpoint yang **sama** juga menerima `application/json` untuk hasil review yang
+sudah diedit: `{rows: [{row, nik, nip, full_name, institution, position, phone,
+email, status}], dry_run: true|false}`. `dry_run` JSON adalah boolean (default
+true), bukan string. Batas JSON 5 MB sebelum parsing dan 5000 baris; `row` asli
+harus integer unik 2–5001. Nilai field harus teks atau null/kosong, identitas
+numerik/scientific tidak diperbaiki. Formula `=` dan karakter kontrol tidak aman
+ditolak. Hanya delapan field data dan nomor `row` digunakan; `participant_id`,
+`attendance_id`, `system_status`, `system_record`, `correction_fields`, history,
+`match_state`, dan `_errors` dari klien diabaikan. DB divalidasi ulang setiap
+request. Frontend boleh menghapus baris sebelum mengirim; ini menghilangkan baris
+dari batch, **bukan** menghapus peserta yang sudah tersimpan. Batch apply kosong
+(JSON maupun XLSX) ditolak; preview kosong dan template XLSX kosong tetap tersedia.
 
 Kolom persis berurutan:
 `NIK,NIP,Nama Lengkap,Instansi,Jabatan,No HP,Email,Status`.
@@ -39,7 +52,12 @@ Response POST:
 ```text
 {
   rows: [{row, nik, nip, full_name, institution, position, phone, email, status,
-          participant_id, attendance_id, action}],
+          participant_id, attendance_id, action,
+          system_status: 'existing'|'new'|'conflict'|'ambiguous',
+          system_record: {full_name, nik, nip}|null,
+          correction_fields: ['nik','nip','full_name'],
+          certificate_history: {has_certificates: boolean, count: integer,
+                                events: [{id: string, title: string}]}}],
   created: integer,
   updated: integer,
   errors: [{row: integer|null, column: string|null, message: string, hint: string}],
@@ -56,24 +74,41 @@ counter hanya rencana, bukan jumlah perubahan tersimpan. Error tingkat file atau
 konflik transaksi memakai row=null. Sukses HTTP 200, termasuk preview kosong.
 
 `dry_run=false` mengunci event dan memvalidasi ulang database dalam transaksi;
-menyimpan hanya jika semua baris bebas error. Identitas dicocokkan per event:
-NIK jika diisi, NIP jika NIK tidak diisi. Jika NIK belum cocok tetapi NIP menunjuk
-peserta NIP-only yang sama, NIK ditambahkan ke peserta tersebut tanpa membuat
-peserta/absensi baru. NIK dan NIP yang menunjuk peserta berbeda ditolak.
+menyimpan hanya jika semua baris bebas error. Registry baca-saja memakai catatan
+peserta dari **seluruh kegiatan** tanpa tabel global baru. Pasangan identitas
+persis yang konsisten di beberapa event dianggap orang yang sama; nama dinormalisasi
+case/whitespace sebagai pemeriksaan kompatibilitas, bukan kunci tautan otomatis.
+`existing` hanya untuk identitas nyata yang cocok dan konsisten; `new` belum cocok.
+Nama yang sama dengan pasangan sistem unik dapat menjelaskan koreksi:
+- NIP sama / NIK berbeda: `conflict`, `correction_fields: ['nik']`.
+- NIK sama / NIP berbeda: `conflict`, `correction_fields: ['nip']`.
+- Keduanya berbeda dengan nama sama: `conflict`, `['nik','nip']`.
+- Identitas sama / nama berbeda: `conflict`, `['full_name']`.
 
-Saat NIK tidak diisi, cari NIP persis pada kegiatan ini terlebih dahulu, kemudian
-pada kegiatan lain. Nama wajib kompatibel (case-insensitive, whitespace
-normalisasi); nama **tidak pernah** menjadi kunci lookup. NIK diketahui yang
-konsisten digunakan ulang. Konflik nama/NIK antar kegiatan atau beberapa peserta
-lokal dengan NIP sama ditolak untuk dikoreksi manual. Jika tidak ada NIK yang
-diketahui, peserta tetap disimpan NIP-only dengan `nik=NULL`, bukan string kosong
-atau identitas buatan. NIK lama tidak dihapus oleh impor yang mengosongkannya.
-NIK preview dapat berupa null atau NIK yang ditemukan dari NIP.
+`system_record` menampilkan nilai sistem yang dikenal; errors menunjuk kolom yang
+tepat dengan hint nilai sistem. Benturan nama/beberapa pasangan bertentangan atau
+beberapa peserta lokal cocok menjadi `ambiguous`, tanpa tebakan/system_record.
+`correction_fields` hanya berisi subset field yang perlu diperbaiki; normalnya [].
+Field sistem kosong tidak menjadi alasan menolak identitas baru yang valid.
+Identitas kosong bisa dilengkapi dari pasangan yang diketahui melalui identifier
+persis, tetapi tidak melalui nama saja. NIK yang belum diketahui tetap NULL.
 
-NIK/NIP/nama duplikat dalam file, identitas dengan nama berbeda, atau nama yang
-cocok dengan peserta lain dalam event ditolak. Kolom opsional kosong tidak
-menghapus nilai lama. NIP nonkosong menandai is_asn=true. Impor berulang idempotent;
-upsert absensi berdasarkan `(event, participant)`. Tidak membuat PDF/sertifikat.
+Apply selalu membuat/memperbarui **peserta milik event tujuan**, tidak menulis
+ulang peserta historis/global. Peserta NIP-only lokal yang memperoleh NIK tetap
+mempertahankan ID peserta/absensi. Nilai kosong tidak menghapus data lama.
+Duplikat NIK efektif (termasuk hasil pengayaan), NIP/nama dalam batch ditolak.
+NIP nonkosong menandai is_asn=true. Impor berulang idempotent; upsert absensi
+berdasarkan `(event, participant)`. Tidak membuat PDF/Certificate, bahkan placeholder.
+
+`certificate_history` selalu hadir pada row XLSX/JSON dan pada ParticipantSerializer
+(API daftar/detail peserta), sehingga riwayat tetap terlihat saat dibuka kembali.
+History menghitung Certificate nyata dengan status `tersedia`, `pdf_file` nonkosong,
+dan file benar-benar tersedia di storage, dari catatan beridentitas kompatibel
+lintas event. Tidak menghitung placeholder tanpa PDF, file hilang, diproses/dicabut.
+Tidak menghasilkan sertifikat baru. `count` menghitung sertifikat dan `events`
+unik berisi ID string/judul kegiatan; tanpa history `{has_certificates:false,
+count:0,events:[]}`. Registry/certificate dibaca batch (dua query), dipakai ulang
+per serializer list, dan cek storage tiap path di-cache dalam request.
 
 Migrasi `participants.0003_nullable_nik` mengubah NIK menjadi blank/null dan
 menormalisasi legacy `nik=''` menjadi NULL; identitas nyata tidak diubah. Constraint
@@ -95,11 +130,12 @@ encrypted/path tidak aman, komponen duplikat dan rasio kompresi ekstrem.
 
 ```sh
 # Salin source ke direktori sementara, bukan /app produksi.
-docker exec silakhadir-backend mkdir -p /tmp/nip-tests
-docker cp /opt/silakhadir/app/backend/. silakhadir-backend:/tmp/nip-tests/
-docker exec -w /tmp/nip-tests silakhadir-backend python manage.py test \
-  apps.attendance.test_xlsx apps.attendance.test_xlsx_identity \
-  apps.participants.test_nullable_nik apps.certificates \
+docker exec silakhadir-backend mkdir -p /tmp/edited-review-tests
+docker cp /opt/silakhadir/app/backend/. silakhadir-backend:/tmp/edited-review-tests/
+docker exec -w /tmp/edited-review-tests silakhadir-backend python manage.py test \
+  apps.attendance.test_edited_review apps.attendance.test_xlsx \
+  apps.attendance.test_xlsx_identity apps.attendance.test_identity_collision \
+  apps.participants apps.certificates \
   --settings=config.settings_test --verbosity=1
 ```
 

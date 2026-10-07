@@ -10,7 +10,7 @@ globalThis.__finalImportTestApi = {
   get: async (...args) => { calls.push(['get', ...args]); return { data: new Blob(['%PDF-1.4'], { type: 'application/pdf' }) } },
 }
 globalThis.window = { location: { origin: 'https://app.example' } }
-const source = (await readFile(new URL('./finalImportApi.js', import.meta.url), 'utf8')).replace("import api from './axios'", 'const api = globalThis.__finalImportTestApi')
+const source = (await readFile(new URL('./finalImportApi.js', import.meta.url), 'utf8')).replace("import api from './axios'", 'const api = globalThis.__finalImportTestApi').replace("'../utils/editableAttendance.mjs'", JSON.stringify(new URL('../utils/editableAttendance.mjs', import.meta.url).href))
 const adapter = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)
 
 test('PDF preview multipart includes mode, pages, optional mixed page groups', async () => {
@@ -31,14 +31,29 @@ test('PDF apply sends explicit assignments with replace_existing false', async (
   assert.equal(calls.at(-1)[1], '/events/7/certificates/import-apply/')
   assert.deepEqual(calls.at(-1)[2], payload)
 })
-test('attendance XLSX always declares dry_run before applying', async () => {
+test('attendance XLSX is preview-only; original file cannot be applied', async () => {
   const file = new File(['xlsx'], 'attendance.xlsx')
   await adapter.importAttendanceXlsx(7, file, true)
   assert.equal(calls.at(-1)[1], '/events/7/attendance/import-xlsx/')
   assert.equal(calls.at(-1)[2].get('dry_run'), 'true')
   assert.equal(calls.at(-1)[2].get('file').name, 'attendance.xlsx')
-  await adapter.importAttendanceXlsx(7, file, false)
-  assert.equal(calls.at(-1)[2].get('dry_run'), 'false')
+  const count = calls.length
+  assert.throws(() => adapter.importAttendanceXlsx(7, file, false), /draf/)
+  assert.equal(calls.length, count)
+})
+test('attendance corrected JSON uses same endpoint, explicit dry_run, whitelist and text identities', async () => {
+  const row = { row: 8, nik: '0012345678901234', nip: '001234567890123456', full_name: 'Edited', phone: '08123', status: '', participant_id: 99, system_status: 'existing', certificate_history: { count: 3 } }
+  for (const dryRun of [true, false]) {
+    await adapter.importAttendanceRows(7, [row, { ...row, row: 10, skipped: true }], dryRun)
+    const [, path, body, config] = calls.at(-1)
+    assert.equal(path, '/events/7/attendance/import-xlsx/')
+    assert.equal(body.dry_run, dryRun)
+    assert.deepEqual(body.rows, [{ row: 8, nik: row.nik, nip: row.nip, full_name: 'Edited', institution: '', position: '', phone: '08123', email: '', status: '' }])
+    assert.equal(config.headers['Content-Type'], 'application/json')
+  }
+  const count = calls.length
+  assert.throws(() => adapter.importAttendanceRows(7, [], false), /sedikitnya/)
+  assert.equal(calls.length, count)
 })
 test('PDF preview uses authenticated blobs and rejects third-party URL token leakage', async () => {
   const url = await adapter.getAuthenticatedPdf('/api/events/7/certificates/preview/')

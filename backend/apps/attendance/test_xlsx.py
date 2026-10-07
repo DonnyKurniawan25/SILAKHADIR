@@ -52,7 +52,8 @@ class AttendanceXlsxTests(TestCase):
         self.assertEqual(wb['Contoh']['B2'].data_type, 's')
         self.assertEqual(wb['Contoh']['A3'].data_type, 's')
         response = self.upload(workbook=wb, dry_run='false')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('kosong', response.data['errors'][0]['message'])
         self.assertEqual(response.data['created'], 0)
         self.assertFalse(Participant.objects.exists())
 
@@ -68,7 +69,7 @@ class AttendanceXlsxTests(TestCase):
         self.assertFalse(Attendance.objects.exists())
 
     def test_apply_and_repeat_are_event_scoped_idempotent_no_certificates(self):
-        Participant.objects.create(event=self.other, nik=VALID[0], full_name='Other Person')
+        Participant.objects.create(event=self.other, nik=VALID[0], full_name=VALID[2])
         with patch('apps.certificates.services.generate_certificates_for_event') as generate:
             response = self.upload([VALID], 'false')
             self.assertEqual(response.status_code, 200)
