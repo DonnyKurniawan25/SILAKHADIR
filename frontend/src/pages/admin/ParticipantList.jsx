@@ -1,25 +1,28 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Download, Upload, Plus, Pencil, Trash2 } from 'lucide-react'
 import Swal from 'sweetalert2'
 import DataTable from '../../components/DataTable'
 import ModalForm from '../../components/ModalForm'
 import {
   createParticipant, deleteParticipant, listParticipants,
-  updateParticipant, importParticipants, exportParticipantsUrl,
+  updateParticipant,
 } from '../../api/eventApi'
-import { downloadAuthed } from '../../utils/download'
+import AttendanceUploadModal from './AttendanceUploadModal'
+import { downloadAttendanceXlsx } from '../../api/finalImportApi'
+import { importError } from '../../utils/importWorkflow.mjs'
 import { useForm } from 'react-hook-form'
 
-export default function ParticipantList({ eventId }) {
+export default function ParticipantList({ eventId, onChanged, refreshVersion }) {
   const [rows, setRows] = useState([])
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(null)
-  const fileRef = useRef(null)
+  const [attendanceOpen, setAttendanceOpen] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   const load = () => listParticipants(eventId, { page_size: 500 })
     .then((r) => setRows(r.data.results || r.data))
 
-  useEffect(() => { load() }, [eventId])
+  useEffect(() => { load() }, [eventId, refreshVersion])
 
   const handleDelete = async (p) => {
     const { isConfirmed } = await Swal.fire({
@@ -27,20 +30,16 @@ export default function ParticipantList({ eventId }) {
       showCancelButton: true, confirmButtonColor: '#dc2626',
     })
     if (!isConfirmed) return
-    await deleteParticipant(p.id); load()
+    await deleteParticipant(p.id); load(); onChanged?.()
   }
 
-  const handleImport = async (file) => {
+  const handleExport = async () => {
+    setExporting(true)
     try {
-      const { data } = await importParticipants(eventId, file)
-      Swal.fire({
-        icon: 'success', title: 'Import selesai',
-        text: `${data.created} ditambahkan, ${data.skipped} dilewati.`,
-      })
-      load()
+      await downloadAttendanceXlsx(eventId, 'export')
     } catch (e) {
-      Swal.fire({ icon: 'error', title: 'Gagal import', text: e?.response?.data?.detail || 'Error' })
-    }
+      Swal.fire({ icon: 'error', title: 'Ekspor absensi gagal', text: importError(e, 'Berkas Excel gagal diunduh.') })
+    } finally { setExporting(false) }
   }
 
   const columns = [
@@ -85,22 +84,16 @@ export default function ParticipantList({ eventId }) {
         emptyText="Belum ada peserta."
         actions={
           <>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".xlsx,.xls"
-              className="hidden"
-              onChange={(e) => e.target.files[0] && handleImport(e.target.files[0])}
-            />
-            <button onClick={() => fileRef.current?.click()} className="btn-outline">
-              <Upload className="w-4 h-4" /> Import Excel
+            <button disabled={exporting} onClick={() => setAttendanceOpen(true)} className="btn-outline">
+              <Upload className="w-4 h-4" /> Unggah Absensi Excel
             </button>
             <button
               type="button"
-              onClick={() => downloadAuthed(exportParticipantsUrl(eventId), `peserta-${eventId}.xlsx`)}
+              onClick={handleExport}
+              disabled={exporting}
               className="btn-outline"
             >
-              <Download className="w-4 h-4" /> Export Excel
+              <Download className="w-4 h-4" /> {exporting ? 'Mengunduh...' : 'Ekspor Absensi .xlsx'}
             </button>
             <button onClick={() => { setEditing(null); setOpen(true) }} className="btn-primary">
               <Plus className="w-4 h-4" /> Tambah Peserta
@@ -109,11 +102,12 @@ export default function ParticipantList({ eventId }) {
         }
       />
 
+      <AttendanceUploadModal open={attendanceOpen} onClose={() => setAttendanceOpen(false)} eventId={eventId} onImported={() => { load(); onChanged?.() }} />
       <ModalForm open={open} onClose={() => setOpen(false)} title={editing ? 'Edit Peserta' : 'Tambah Peserta'}>
         <ParticipantForm
           eventId={eventId}
           participant={editing}
-          onSaved={() => { setOpen(false); load() }}
+          onSaved={() => { setOpen(false); load(); onChanged?.() }}
         />
       </ModalForm>
     </div>

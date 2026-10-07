@@ -1,267 +1,145 @@
-import { useRef, useState } from 'react'
-import {
-  UploadCloud, FileText, CheckCircle2, AlertCircle,
-  FileQuestion, Loader2, Trash2, PlayCircle, Search,
-} from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import Swal from 'sweetalert2'
 import ModalForm from '../../components/ModalForm'
-import { bulkUploadCertificates } from '../../api/certificateApi'
+import PdfPreviewModal from './PdfPreviewModal'
+import { previewFinalCertificates, applyFinalCertificates } from '../../api/finalImportApi'
+import { parsePageGroups, validateFiles, validateAssignments, importError } from '../../utils/importWorkflow.mjs'
 
-export default function BulkUploadModal({ open, onClose, eventId, onUploaded }) {
+const MATCH_LABELS = { matched: 'Cocok otomatis', exact: 'Cocok persis', ready: 'Siap ditinjau', unmatched: 'Belum cocok', ambiguous: 'Nama ambigu', duplicate: 'Peserta duplikat', manual: 'Periksa manual' }
+
+export default function BulkUploadModal({ open, onClose, eventId, onUploaded, single = false }) {
   const [files, setFiles] = useState([])
-  const [results, setResults] = useState(null)
-  const [mode, setMode] = useState('idle') // idle | scanning | uploading | done
-  const [createMissing, setCreateMissing] = useState(false)
-  const inputRef = useRef(null)
+  const [mode, setMode] = useState(single ? 'separate' : 'combined')
+  const [pages, setPages] = useState(1)
+  const [custom, setCustom] = useState(false)
+  const [ranges, setRanges] = useState('')
+  const [batch, setBatch] = useState(null)
+  const [items, setItems] = useState([])
+  const [replaceExisting, setReplaceExisting] = useState(false)
+  const [reviewed, setReviewed] = useState(false)
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+  const [previewUrl, setPreviewUrl] = useState('')
+  const requestVersion = useRef(0)
 
-  const reset = () => {
-    setFiles([])
-    setResults(null)
-    setMode('idle')
-    setCreateMissing(false)
+  const invalidate = () => { requestVersion.current += 1; setBatch(null); setItems([]); setReviewed(false); setReplaceExisting(false); setError(''); setPreviewUrl('') }
+  useEffect(() => {
+    if (open) {
+      setFiles([]); setMode(single ? 'separate' : 'combined'); setPages(1); setCustom(false); setRanges(''); invalidate()
+      setBusy('')
+    }
+    return () => { requestVersion.current += 1 }
+  }, [open, eventId, single])
+
+  const pickFiles = (event) => {
+    const picked = Array.from(event.target.files || [])
+    event.target.value = ''
+    invalidate()
+    const validation = validateFiles(picked, 'pdf')
+    if (validation || ((mode === 'combined' || single) && picked.length !== 1)) {
+      setFiles([]); setError(validation || 'Pilih tepat satu PDF.'); return
+    }
+    setFiles(picked)
   }
 
-  const handleClose = () => {
-    reset()
-    onClose?.()
-  }
-
-  const handlePickFiles = (e) => {
-    const list = Array.from(e.target.files || []).filter((f) =>
-      f.name.toLowerCase().endsWith('.pdf'))
-    setFiles((prev) => {
-      const names = new Set(prev.map((p) => p.name + p.size))
-      const add = list.filter((f) => !names.has(f.name + f.size))
-      return [...prev, ...add]
-    })
-    e.target.value = ''
-  }
-
-  const handleDrop = (e) => {
-    e.preventDefault()
-    const list = Array.from(e.dataTransfer.files || []).filter((f) =>
-      f.name.toLowerCase().endsWith('.pdf'))
-    setFiles((prev) => [...prev, ...list])
-  }
-
-  const removeFile = (idx) => {
-    setFiles((prev) => prev.filter((_, i) => i !== idx))
-  }
-
-  const runScan = async () => {
-    if (!files.length) return
-    setMode('scanning')
+  const runPreview = async () => {
+    invalidate()
+    const validation = validateFiles(files, 'pdf')
+    if (validation) { setError(validation); return }
+    if ((mode === 'combined' || single) && files.length !== 1) { setError('Pilih tepat satu PDF.'); return }
+    let pageGroups
+    if (mode === 'combined') {
+      if (custom) {
+        try { pageGroups = parsePageGroups(ranges) } catch (err) { setError(err.message); return }
+      } else if (!Number.isSafeInteger(Number(pages)) || Number(pages) < 1) { setError('Halaman per peserta harus bilangan bulat positif.'); return }
+    }
+    setBusy('preview')
+    const version = requestVersion.current
     try {
-      const { data } = await bulkUploadCertificates(eventId, {
-        files, dryRun: true, createMissing,
-      })
-      setResults(data)
-      setMode('idle')
-    } catch (e) {
-      setMode('idle')
-      Swal.fire({ icon: 'error', title: 'Gagal scan', text: e?.response?.data?.detail || 'Error' })
-    }
+      const { data } = await previewFinalCertificates(eventId, { files, mode, pagesPerParticipant: mode === 'separate' || custom ? 1 : Number(pages), pageGroups })
+      if (version !== requestVersion.current) return
+      if (!data.batch_id || !Array.isArray(data.items) || !Array.isArray(data.participants)) throw new Error('Respons pratinjau tidak lengkap. Coba kembali.')
+      const allowed = new Set(data.participants.map((p) => String(p.id)))
+      setBatch(data)
+      setItems(data.items.map((item) => ({ ...item, participant_id: allowed.has(String(item.participant_id)) ? item.participant_id : '', certificate_number: String(item.certificate_number || '') })))
+    } catch (err) { if (version === requestVersion.current) setError(importError(err, err.message || 'Gagal membuat pratinjau PDF.')) }
+    finally { if (version === requestVersion.current) setBusy('') }
   }
 
-  const runCommit = async () => {
-    if (!files.length) return
-    const { isConfirmed } = await Swal.fire({
-      icon: 'question',
-      title: 'Upload semua sertifikat?',
-      text: `${files.length} file akan diproses. Lanjutkan?`,
-      showCancelButton: true,
-      confirmButtonText: 'Ya, upload',
-    })
-    if (!isConfirmed) return
-    setMode('uploading')
+  const mappingError = batch ? validateAssignments(items, batch.participants) : ''
+  const assigned = items.filter((item) => item.participant_id !== '' && item.participant_id != null)
+  const updateItem = (id, field, value) => {
+    setItems((current) => current.map((item) => item.id === id ? { ...item, [field]: value } : item))
+    setReviewed(false); setError('')
+  }
+  const apply = async () => {
+    if (!batch || busy || !reviewed || mappingError) return
+    setBusy('confirm')
+    const version = requestVersion.current
     try {
-      const { data } = await bulkUploadCertificates(eventId, {
-        files, dryRun: false, createMissing,
+      const { isConfirmed } = await Swal.fire({
+        icon: replaceExisting ? 'warning' : 'question', title: 'Terapkan pemetaan sertifikat?',
+        text: `${assigned.length} sertifikat akan diterapkan; ${items.length - assigned.length} berkas tanpa peserta dilewati.${replaceExisting ? ' PERINGATAN: sertifikat peserta yang sudah ada akan diganti.' : ' Sertifikat yang sudah ada tidak akan diganti.'}`,
+        showCancelButton: true, confirmButtonText: 'Ya, terapkan', cancelButtonText: 'Batal',
       })
-      setResults(data)
-      setMode('done')
-      Swal.fire({
-        icon: 'success',
-        title: 'Upload selesai',
-        text: `${data.ok} sertifikat berhasil, ${data.failed} gagal/dilewati.`,
+      if (!isConfirmed || version !== requestVersion.current) return
+      setBusy('apply'); setError('')
+      await applyFinalCertificates(eventId, {
+        batch_id: batch.batch_id,
+        assignments: assigned.map((item) => ({ item_id: item.id, participant_id: item.participant_id, certificate_number: item.certificate_number.trim() })),
+        replace_existing: replaceExisting,
       })
-      onUploaded?.()
-    } catch (e) {
-      setMode('idle')
-      Swal.fire({ icon: 'error', title: 'Gagal upload', text: e?.response?.data?.detail || 'Error' })
-    }
+      if (version !== requestVersion.current) return
+      setBusy(''); invalidate(); setFiles([])
+      onUploaded?.(); onClose?.()
+      Swal.fire({ icon: 'success', title: 'Impor sertifikat selesai', text: 'Pemetaan PDF final telah diterapkan.' })
+    } catch (err) { if (version === requestVersion.current) setError(importError(err, 'Gagal menerapkan sertifikat. Periksa pemetaan atau buat pratinjau baru.')) }
+    finally { if (version === requestVersion.current) setBusy('') }
   }
 
-  const statusPill = (st) => {
-    const map = {
-      uploaded: { cls: 'badge-green', Icon: CheckCircle2, label: 'Terupload' },
-      ready: { cls: 'badge-blue', Icon: CheckCircle2, label: 'Siap upload' },
-      unmatched: { cls: 'badge-yellow', Icon: FileQuestion, label: 'Tak cocok' },
-      no_number: { cls: 'badge-yellow', Icon: AlertCircle, label: 'Tanpa nomor' },
-      failed: { cls: 'badge-red', Icon: AlertCircle, label: 'Gagal' },
-      pending: { cls: 'badge-gray', Icon: Loader2, label: 'Menunggu' },
-    }
-    const m = map[st] || map.pending
-    return (
-      <span className={`${m.cls} inline-flex items-center gap-1`}>
-        <m.Icon className="w-3 h-3" /> {m.label}
-      </span>
-    )
-  }
-
-  return (
-    <ModalForm open={open} onClose={handleClose}
-               title="Bulk Upload Sertifikat" maxWidth="max-w-4xl">
+  return <>
+    <ModalForm open={open} onClose={() => { if (!busy && !previewUrl) onClose?.() }} title={single ? 'Unggah PDF final untuk peserta' : 'Impor sertifikat PDF final Canva'} maxWidth="max-w-6xl">
       <div className="space-y-4">
-        {/* Dropzone */}
-        <label
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={handleDrop}
-          className="flex flex-col items-center justify-center gap-2 p-8 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 cursor-pointer hover:border-brand-500 hover:bg-brand-50"
-        >
-          <UploadCloud className="w-10 h-10 text-slate-400" />
-          <div className="font-semibold text-slate-700">
-            Drop file PDF di sini, atau klik untuk pilih
-          </div>
-          <div className="text-xs text-slate-500">
-            Banyak file sekaligus - sistem akan mencocokkan nama peserta & nomor sertifikat otomatis
-          </div>
-          <input
-            ref={inputRef}
-            type="file"
-            accept="application/pdf"
-            multiple
-            className="hidden"
-            onChange={handlePickFiles}
-          />
-        </label>
-
-        {files.length > 0 && (
-          <div className="card p-0 overflow-hidden">
-            <div className="p-3 flex items-center justify-between border-b border-slate-100">
-              <div className="font-semibold text-brand-900">
-                {files.length} file dipilih
-              </div>
-              <button onClick={() => setFiles([])}
-                      className="text-xs text-rose-600 hover:underline">
-                Bersihkan
-              </button>
-            </div>
-            <div className="max-h-48 overflow-y-auto divide-y divide-slate-100">
-              {files.map((f, i) => (
-                <div key={i} className="p-2.5 flex items-center gap-2 text-sm">
-                  <FileText className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                  <span className="flex-1 truncate">{f.name}</span>
-                  <span className="text-xs text-slate-400">{(f.size / 1024).toFixed(0)} KB</span>
-                  <button onClick={() => removeFile(i)} className="text-rose-500 hover:bg-rose-50 p-1 rounded">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <label className="flex items-start gap-2 p-3 border rounded-lg cursor-pointer hover:bg-slate-50">
-          <input type="checkbox" className="w-4 h-4 mt-0.5"
-                 checked={createMissing}
-                 onChange={(e) => setCreateMissing(e.target.checked)} />
-          <div>
-            <div className="font-semibold text-sm">Tambah peserta baru otomatis</div>
-            <div className="text-xs text-slate-500">
-              Jika PDF mengandung NIK yang belum terdaftar di kegiatan ini,
-              sistem akan membuat data pesertanya secara otomatis.
-            </div>
-          </div>
-        </label>
-
-        <div className="flex flex-col md:flex-row gap-2">
-          <button
-            type="button"
-            onClick={runScan}
-            disabled={!files.length || mode === 'scanning' || mode === 'uploading'}
-            className="btn-outline flex-1"
-          >
-            {mode === 'scanning' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-            Scan & Preview
-          </button>
-          <button
-            type="button"
-            onClick={runCommit}
-            disabled={!files.length || mode === 'scanning' || mode === 'uploading'}
-            className="btn-primary flex-1"
-          >
-            {mode === 'uploading' ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />}
-            {mode === 'uploading' ? 'Mengunggah...' : 'Upload Semua'}
-          </button>
-        </div>
-
-        {results && (
-          <div className="card p-0 overflow-hidden">
-            <div className="p-3 border-b border-slate-100 flex items-center gap-3 flex-wrap">
-              <span className="text-sm font-semibold text-slate-700">
-                Hasil {results.dry_run ? 'Scan' : 'Upload'}:
-              </span>
-              <span className="badge-green">{results.ok} OK</span>
-              <span className="badge-red">{results.failed} gagal</span>
-              <span className="badge-gray">Total {results.total}</span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="table-base">
-                <thead>
-                  <tr>
-                    <th>File</th>
-                    <th>Peserta Match</th>
-                    <th>Nomor Sertifikat</th>
-                    <th>Skor</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {results.results.map((r, i) => (
-                    <tr key={i}>
-                      <td className="max-w-[180px] truncate" title={r.filename}>
-                        {r.filename}
-                      </td>
-                      <td>
-                        {r.matched_participant ? (
-                          <div>
-                            <div className="font-semibold">
-                              {r.matched_participant.full_name}
-                              {r.matched_participant.new && (
-                                <span className="badge-blue ml-1">Baru</span>
-                              )}
-                            </div>
-                            <div className="text-xs text-slate-500 font-mono">
-                              {r.matched_participant.nik}
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 text-xs">—</span>
-                        )}
-                      </td>
-                      <td className="font-mono text-xs">
-                        {r.certificate_number || <span className="text-slate-400">—</span>}
-                      </td>
-                      <td className="text-xs">
-                        {r.matched_score
-                          ? `${Math.round(r.matched_score * 100)}%`
-                          : '-'}
-                      </td>
-                      <td>
-                        <div>{statusPill(r.status)}</div>
-                        {r.message && (
-                          <div className="text-[11px] text-slate-500 mt-1">{r.message}</div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        <p className="text-sm text-ink-700">Unggah PDF yang sudah lengkap dan ditandatangani dari Canva. Sistem hanya memisahkan halaman dan memetakan ke peserta hadir, tanpa menambah nama, nomor, barcode, atau tanda tangan pada PDF.</p>
+        <fieldset disabled={Boolean(busy)} className="space-y-3 disabled:opacity-60">
+          {!single && <label className="label">Bentuk berkas<select className="input mt-1" value={mode} onChange={(e) => { setMode(e.target.value); setFiles([]); invalidate() }}>
+            <option value="combined">Satu PDF gabungan (pisahkan per peserta)</option>
+            <option value="separate">Banyak PDF yang sudah dipisahkan per peserta</option>
+          </select></label>}
+          {mode === 'combined' && <div className="rounded border p-3 space-y-3">
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={custom} onChange={(e) => { setCustom(e.target.checked); invalidate() }} /> Gunakan rentang manual (jumlah halaman tiap peserta berbeda)</label>
+            {custom ? <label className="label">Rentang halaman per peserta<textarea className="input mt-1" rows={3} value={ranges} onChange={(e) => { setRanges(e.target.value); invalidate() }} placeholder="1-2, 3, 4-6" /><span className="block text-xs text-ink-500 mt-1">Mulai dari halaman 1. Pisahkan kelompok dengan koma atau baris baru. Contoh: 1-2 untuk peserta pertama, 3 untuk peserta kedua, 4-6 untuk peserta ketiga. Semua halaman harus tercakup dalam rentang tanpa tumpang tindih.</span></label>
+              : <label className="label">Jumlah halaman per peserta<input type="number" min="1" step="1" className="input mt-1" value={pages} onChange={(e) => { setPages(e.target.value); invalidate() }} /></label>}
+          </div>}
+          <label className="label">Berkas PDF<input key={`${mode}-${single}`} type="file" className="input mt-1" accept=".pdf,application/pdf" multiple={mode === 'separate' && !single} onChange={pickFiles} /><span className="block text-xs text-ink-500 mt-1">Maksimal total 50 MB, 100 berkas dan 200 halaman per impor. Memilih berkas baru menggantikan pilihan sebelumnya.</span></label>
+          {files.length > 0 && <ul className="max-h-28 overflow-y-auto text-sm list-disc pl-5">{files.map((file, i) => <li key={i}>{file.name}</li>)}</ul>}
+          <button type="button" onClick={runPreview} className="btn-outline" disabled={!files.length}>{busy === 'preview' ? 'Memproses pratinjau...' : '1. Buat pratinjau dan pencocokan'}</button>
+        </fieldset>
+        {error && <p role="alert" className="bg-red-50 border border-red-200 p-3 rounded text-sm text-red-800">{error}</p>}
+        {batch && <section className="space-y-3">
+          <h4 className="font-semibold">2. Tinjau dan koreksi pemetaan ({items.length} berkas)</h4>
+          <p className="text-sm text-ink-500">Hanya peserta hadir dari server tersedia di pilihan. Nama hasil deteksi bukan bukti pasti; periksa PDF dan identitas peserta. Pilih “Lewati” untuk berkas yang tidak cocok. Nomor bersifat metadata opsional, tidak dicetak ke PDF.</p>
+          {!batch.participants.length && <p role="alert" className="text-amber-700">Belum ada peserta hadir untuk dipetakan. Unggah absensi dahulu, kemudian buat pratinjau ulang.</p>}
+          <div className="overflow-x-auto max-h-[45vh] overflow-y-auto border rounded"><table className="table-base"><thead><tr><th>Berkas / halaman</th><th>Nama terdeteksi / kecocokan</th><th>Peserta hadir</th><th>Nomor (opsional)</th><th>PDF</th></tr></thead><tbody>
+            {items.map((item) => <tr key={item.id}>
+              <td><div className="text-sm break-all">{item.filename}</div><div className="text-xs text-ink-500">Halaman {item.page_start ?? '-'}–{item.page_end ?? '-'} ({item.page_count ?? '-'} halaman)</div></td>
+              <td><div>{item.detected_name || 'Nama tidak terdeteksi'}</div><span className="text-xs text-ink-500">{MATCH_LABELS[item.match_status] || 'Periksa hasil pencocokan'}</span>{item.participant_name && <div className="text-xs">Saran: {item.participant_name}</div>}</td>
+              <td><select aria-label={`Peserta untuk ${item.filename}, halaman ${item.page_start}`} disabled={Boolean(busy)} className="input min-w-[240px]" value={item.participant_id} onChange={(e) => updateItem(item.id, 'participant_id', e.target.value)}>
+                <option value="">Lewati — tanpa peserta</option>
+                {batch.participants.map((p) => <option key={p.id} value={p.id}>{p.full_name} · NIK {p.nik || '-'}{p.nip ? ` · NIP ${p.nip}` : ''}</option>)}
+              </select></td>
+              <td><input aria-label={`Nomor sertifikat ${item.filename}`} disabled={Boolean(busy)} className="input min-w-[170px]" value={item.certificate_number} onChange={(e) => updateItem(item.id, 'certificate_number', e.target.value)} placeholder="Boleh kosong" /></td>
+              <td>{item.preview_url ? <button type="button" disabled={Boolean(busy)} className="btn-outline" onClick={() => setPreviewUrl(item.preview_url)}>Lihat PDF</button> : <span className="text-xs text-ink-500">Tidak tersedia</span>}</td>
+            </tr>)}
+          </tbody></table></div>
+          {mappingError && <p role="alert" className="text-amber-700 text-sm">{mappingError}</p>}
+          <p className="text-sm">Akan diterapkan: <strong>{assigned.length}</strong>. Dilewati: <strong>{items.length - assigned.length}</strong>.</p>
+          <label className="flex items-start gap-2 p-3 border border-amber-300 bg-amber-50 rounded text-sm"><input type="checkbox" disabled={Boolean(busy)} checked={replaceExisting} onChange={(e) => { setReplaceExisting(e.target.checked); setReviewed(false) }} /><span><strong>Ganti sertifikat yang sudah ada.</strong> Peringatan: PDF lama peserta yang dipilih akan diganti. Biarkan tidak dicentang untuk melindungi sertifikat lama.</span></label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" disabled={Boolean(busy) || Boolean(mappingError)} checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} /> Saya sudah memeriksa PDF, rentang halaman, dan identitas semua peserta yang dipilih.</label>
+          <button type="button" onClick={apply} disabled={Boolean(busy) || !reviewed || Boolean(mappingError)} className="btn-primary">{busy === 'apply' ? 'Menerapkan...' : '3. Konfirmasi dan terapkan pemetaan'}</button>
+        </section>}
       </div>
     </ModalForm>
-  )
+    <PdfPreviewModal url={previewUrl} onClose={() => setPreviewUrl('')} />
+  </>
 }

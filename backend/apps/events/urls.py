@@ -39,6 +39,7 @@ nested_reports.register(r'reports', EventReportViewSet, basename='event-report')
 urlpatterns = [
     # Main router dulu agar /api/events/{id}/ (detail) diprioritaskan.
     path('', include(router.urls)),
+    path('<uuid:event_id>/attendance/', include('apps.attendance.urls_xlsx')),
     path('<uuid:event_id>/', include(nested_participants.urls)),
     path('<uuid:event_id>/', include(nested_certificates.urls)),
     path('<uuid:event_id>/', include(nested_reports.urls)),

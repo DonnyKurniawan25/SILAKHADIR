@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
   Calendar, MapPin, Building2, ArrowLeft, Copy, Check,
-  LockKeyhole, Award, Users2, Upload, RefreshCw, UploadCloud,
-  QrCode, Printer, Download, FileText, Save, Pencil,
+  LockKeyhole, Award, Users2, Upload, UploadCloud,
+  QrCode, Printer, Download, FileText, Save,
 } from 'lucide-react'
 import Swal from 'sweetalert2'
 import Loading from '../../components/Loading'
@@ -11,12 +11,14 @@ import { StatusBadge } from './Dashboard'
 import ParticipantList from './ParticipantList'
 import UploadCertificateModal from './UploadCertificateModal'
 import BulkUploadModal from './BulkUploadModal'
+import PdfPreviewModal from './PdfPreviewModal'
+import { getAuthenticatedPdf } from '../../api/finalImportApi'
+import { importError } from '../../utils/importWorkflow.mjs'
 import EventReportTab from './EventReportTab'
 import { closeEvent, finishEvent, getEvent, getAttendanceLink } from '../../api/eventApi'
 import {
-  listEventCertificates, replaceCertificateFile, configureEventCertificate,
+  listEventCertificates, configureEventCertificate,
   getEventCertificateConfig, suggestEventCertificateLayout,
-  setCertificateNumber,
 } from '../../api/certificateApi'
 
 export default function EventDetail() {
@@ -28,8 +30,10 @@ export default function EventDetail() {
   const [certs, setCerts] = useState([])
   const [uploadOpen, setUploadOpen] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [refreshVersion, setRefreshVersion] = useState(0)
 
   const loadEvent = () => {
+    setRefreshVersion((value) => value + 1)
     getEvent(id).then((r) => setEvent(r.data))
     getAttendanceLink(id).then((r) => setLink(r.data))
     listEventCertificates(id).then((r) => setCerts(r.data.results || r.data))
@@ -169,10 +173,10 @@ export default function EventDetail() {
           </button>
           <div className="flex-1" />
           <button onClick={() => setUploadOpen(true)} className="btn-outline">
-            <Upload className="w-4 h-4" /> Unggah Sertifikat
+            <Upload className="w-4 h-4" /> PDF Final Satu Peserta
           </button>
           <button onClick={() => setBulkOpen(true)} className="btn-primary">
-            <UploadCloud className="w-4 h-4" /> Unggah Massal
+            <UploadCloud className="w-4 h-4" /> Impor PDF Final Canva
           </button>
         </div>
       </div>
@@ -190,9 +194,9 @@ export default function EventDetail() {
         </TabBtn>
       </div>
 
-      {tab === 'participants' && <ParticipantList eventId={id} />}
+      {tab === 'participants' && <ParticipantList eventId={id} refreshVersion={refreshVersion} onChanged={loadEvent} />}
       {tab === 'certificates' && (
-        <CertTab eventId={id} certs={certs} onRefresh={loadEvent} />
+        <CertTab eventId={id} certs={certs} onRefresh={loadEvent} onImport={() => setBulkOpen(true)} />
       )}
       {tab === 'report' && <EventReportTab eventId={id} />}
 
@@ -234,13 +238,48 @@ const DEFAULT_CERT_LAYOUT = {
   name_font_size: 36, number_font_size: 14,
 }
 
-function CertTab({ eventId, certs, onRefresh }) {
+function CertTab({ eventId, certs, onRefresh, onImport }) {
+  const [pdfPreview, setPdfPreview] = useState('')
+  const [downloading, setDownloading] = useState(null)
+  const [legacyOpen, setLegacyOpen] = useState(false)
+  const handleDownload = async (cert) => {
+    setDownloading(cert.id)
+    let url = ''
+    try {
+      url = await getAuthenticatedPdf(cert.download_url || cert.pdf_url)
+      const anchor = document.createElement('a')
+      anchor.href = url; anchor.download = `sertifikat-${cert.id}.pdf`
+      document.body.appendChild(anchor); anchor.click(); anchor.remove()
+    } catch (err) { Swal.fire({ icon: 'error', title: 'Unduh PDF gagal', text: importError(err, err.message || 'Berkas tidak dapat diunduh.') }) }
+    finally { setDownloading(null); if (url) setTimeout(() => URL.revokeObjectURL(url), 1000) }
+  }
+  return <div className="space-y-4">
+    <section className="card space-y-3">
+      <div className="eyebrow">Sertifikat PDF final</div>
+      <h2 className="font-serif font-bold text-lg">PDF Canva sudah lengkap dan ditandatangani</h2>
+      <p className="text-sm text-ink-600">Impor satu PDF gabungan atau banyak PDF terpisah. Atur halaman per peserta atau rentang campuran, lalu tinjau dan koreksi pemetaan ke peserta hadir sebelum menerapkan. Sistem tidak menambahkan teks, barcode, maupun tanda tangan pada PDF final.</p>
+      <button type="button" onClick={onImport} className="btn-primary"><UploadCloud className="w-4 h-4" /> Impor dan tinjau PDF final</button>
+      <p className="text-xs text-ink-500">Untuk mengganti PDF, impor kembali dan pilih “Ganti sertifikat yang sudah ada” setelah memeriksa peserta.</p>
+    </section>
+    {!certs.length ? <div className="card text-center text-ink-500">Belum ada sertifikat.</div> : <div className="card p-0 overflow-x-auto"><table className="table-base"><thead><tr><th>Nomor (metadata)</th><th>Nama peserta</th><th>Status</th><th>Tindakan</th></tr></thead><tbody>
+      {certs.map((cert) => <tr key={cert.id}><td className="font-mono text-xs">{cert.certificate_number || '-'}</td><td className="font-semibold">{cert.participant_name}</td><td><span className={cert.status === 'available' ? 'badge-green' : 'badge-yellow'}>{cert.status === 'available' ? 'Tersedia' : cert.status === 'failed' ? 'Gagal' : 'Memproses'}</span></td><td>{cert.pdf_url && <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setPdfPreview(cert.pdf_url)} className="btn-outline !py-1.5 text-xs">Pratinjau PDF</button><button type="button" disabled={downloading !== null} onClick={() => handleDownload(cert)} className="btn-primary !py-1.5 text-xs">{downloading === cert.id ? 'Mengunduh...' : 'Unduh PDF'}</button></div>}</td></tr>)}
+    </tbody></table></div>}
+    <details className="border rounded p-4" onToggle={(e) => setLegacyOpen(e.currentTarget.open)}>
+      <summary className="cursor-pointer text-sm text-ink-500">Editor lama berbasis template (opsional, bukan alur PDF final)</summary>
+      <p className="text-sm text-amber-800 bg-amber-50 rounded p-3 my-3">Fitur lama untuk sertifikat yang dibuat dari template gambar. Jangan gunakan untuk PDF final Canva. Simpan konfigurasi lama hanya jika diperlukan; data sertifikat lama tetap ditampilkan di atas.</p>
+      {legacyOpen && <LegacyCertEditor eventId={eventId} certs={certs} onRefresh={onRefresh} />}
+    </details>
+    <PdfPreviewModal url={pdfPreview} onClose={() => setPdfPreview('')} />
+  </div>
+}
+
+function LegacyCertEditor({ eventId, certs, onRefresh }) {
   const [templateImage, setTemplateImage] = useState(null)
   const [signatureImage, setSignatureImage] = useState(null)
   const [templatePreview, setTemplatePreview] = useState('')
   const [signaturePreview, setSignaturePreview] = useState('')
   const [certificateNumber, setCertificateNumberValue] = useState('')
-  const [applyAll, setApplyAll] = useState(true)
+  const [applyAll, setApplyAll] = useState(false)
   const [saving, setSaving] = useState(false)
   const [suggesting, setSuggesting] = useState(false)
   const [loadingConfig, setLoadingConfig] = useState(true)
@@ -356,18 +395,6 @@ function CertTab({ eventId, certs, onRefresh }) {
   }
   const handleResizeEnd = (event) => { resizeState.current = null; event.currentTarget.releasePointerCapture?.(event.pointerId) }
 
-  const handleSetNumber = async (cert) => {
-    const { value } = await Swal.fire({ title: 'Ubah nomor sertifikat', input: 'text', inputValue: cert.certificate_number || '', inputLabel: 'Nomor sertifikat peserta ini', showCancelButton: true, confirmButtonText: 'Simpan', cancelButtonText: 'Batal', inputValidator: (v) => !v?.trim() && 'Nomor wajib diisi' })
-    if (!value?.trim()) return
-    try { await setCertificateNumber(eventId, cert.id, value.trim()); Swal.fire({ icon: 'success', title: 'Nomor disimpan', timer: 1200, showConfirmButton: false }); onRefresh?.() }
-    catch (err) { Swal.fire({ icon: 'error', title: 'Gagal menyimpan nomor', text: err?.response?.data?.detail || 'Terjadi kesalahan.' }) }
-  }
-  const handleReplace = async (cert) => {
-    const { value: file } = await Swal.fire({ title: 'Ganti Berkas PDF', text: `Nomor: ${cert.certificate_number || '-'}`, input: 'file', inputAttributes: { accept: 'application/pdf' }, showCancelButton: true, confirmButtonText: 'Unggah' })
-    if (!file) return
-    try { await replaceCertificateFile(eventId, cert.id, file); Swal.fire({ icon: 'success', title: 'Berkas diganti', timer: 1200, showConfirmButton: false }); onRefresh?.() }
-    catch (err) { Swal.fire({ icon: 'error', title: 'Gagal', text: err?.response?.data?.detail || 'Error' }) }
-  }
 
   return (
     <div className="space-y-4">
@@ -389,7 +416,6 @@ function CertTab({ eventId, certs, onRefresh }) {
         <label className="flex items-center gap-2 text-sm text-ink-700"><input type="checkbox" checked={applyAll} onChange={(e) => setApplyAll(e.target.checked)} /> Terapkan nomor ke semua sertifikat</label>
         <button type="submit" disabled={saving || loadingConfig} className="btn-primary"><Save className="w-4 h-4" /> {saving ? 'Menyimpan...' : 'Simpan tata letak & buat pratinjau'}</button>
       </form>
-      {!certs.length ? <div className="border border-slate-200 rounded bg-white p-10 text-center"><Award className="w-10 h-10 text-ink-300 mx-auto mb-2" /><p className="text-ink-500">Belum ada sertifikat.</p></div> : <div className="card p-0 overflow-hidden"><table className="table-base"><thead><tr><th>No. Sertifikat</th><th>Nama Peserta</th><th>Status</th><th className="text-right pr-4">Tindakan</th></tr></thead><tbody>{certs.map((c) => <tr key={c.id}><td className="font-mono text-xs">{c.certificate_number || '-'}</td><td className="font-semibold">{c.participant_name}</td><td><span className={c.status === 'available' ? 'badge-green' : 'badge-yellow'}>{c.status || 'Memproses'}</span></td><td className="text-right pr-4"><button onClick={() => handleSetNumber(c)} className="btn-ghost !px-2 !py-1.5 text-xs"><Pencil className="w-3.5 h-3.5" /> Nomor</button> <button onClick={() => handleReplace(c)} className="btn-ghost !px-2 !py-1.5 text-xs"><RefreshCw className="w-3.5 h-3.5" /> PDF</button>{c.pdf_url && <><a href={c.pdf_url} target="_blank" rel="noreferrer" className="btn-ghost !px-2 !py-1.5 text-xs ml-1">Pratinjau PDF</a><a href={c.download_url || c.pdf_url} className="btn-primary !px-3 !py-1.5 text-xs ml-1">Unduh</a></>}</td></tr>)}</tbody></table></div>}
     </div>
   )
 }

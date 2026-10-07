@@ -1,0 +1,9 @@
+# Merge with the site's existing compose file (no credentials stored here):
+# docker compose -f /opt/silakhadir/docker-compose.yml \
+#   -f /opt/silakhadir/app/deploy/compose.canva.yml up -d backend frontend
+services:
+  backend:
+    volumes:
+      - certificate_import_data:/app/private_certificate_imports
+volumes:
+  certificate_import_data:

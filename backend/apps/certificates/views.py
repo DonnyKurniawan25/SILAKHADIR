@@ -128,6 +128,58 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
             event_id=self.kwargs['event_id']
         ).select_related('participant', 'event', 'number_format')
 
+    @action(detail=False, methods=['post'], url_path='import-preview')
+    def import_preview(self, request, event_id=None):
+        from .imports import create_preview
+        event = get_object_or_404(Event, pk=event_id)
+        batch, items, participants = create_preview(
+            event, request.user, request.FILES.getlist('files') or request.FILES.getlist('files[]'), request.data,
+        )
+        return Response({
+            'batch_id': str(batch.pk),
+            'items': [{
+                'id': str(item.pk), 'filename': item.filename,
+                'page_start': item.page_start, 'page_end': item.page_end,
+                'page_count': item.page_end - item.page_start + 1,
+                'detected_name': item.detected_name or None,
+                'participant_id': str(item.participant_id) if item.participant_id else None,
+                'participant_name': item.participant.full_name if item.participant_id else None,
+                'match_status': item.match_status, 'certificate_number': item.certificate_number,
+                'preview_url': request.path.rstrip('/') + f'/{batch.pk}/{item.pk}/pdf/',
+            } for item in items],
+            'participants': [{'id': str(p.pk), 'full_name': p.full_name, 'nik': p.nik, 'nip': p.nip} for p in participants],
+        })
+
+    @action(detail=False, methods=['get'], url_path=r'import-preview/(?P<batch_id>[0-9a-f-]+)/(?P<item_id>[0-9a-f-]+)/pdf')
+    def import_preview_pdf(self, request, event_id=None, batch_id=None, item_id=None):
+        from .imports import private_storage, scoped_batch
+        from .models import CertificateImportItem
+        import uuid
+        from rest_framework.exceptions import ValidationError
+        event = get_object_or_404(Event, pk=event_id)
+        batch = scoped_batch(event, request.user, batch_id)
+        try:
+            item_uuid = uuid.UUID(str(item_id))
+        except ValueError:
+            raise ValidationError('item_id tidak valid.')
+        item = get_object_or_404(CertificateImportItem, batch=batch, pk=item_uuid)
+        try:
+            stream = private_storage().open(item.private_path, 'rb')
+        except FileNotFoundError:
+            raise Http404
+        response = FileResponse(stream, content_type='application/pdf', filename='preview.pdf')
+        response['Cache-Control'] = 'private, no-store'
+        response['X-Content-Type-Options'] = 'nosniff'
+        return response
+
+    @action(detail=False, methods=['post'], url_path='import-apply', parser_classes=[JSONParser])
+    def import_apply(self, request, event_id=None):
+        from .imports import apply_import
+        event = get_object_or_404(Event, pk=event_id)
+        certificates = apply_import(event, request.user, request.data)
+        return Response({'applied': len(certificates), 'certificates': CertificateSerializer(
+            certificates, many=True, context={'request': request}).data})
+
     @action(detail=False, methods=['post'], url_path='generate')
     def generate(self, request, event_id=None):
         event = get_object_or_404(Event, id=event_id)
@@ -268,6 +320,9 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
         if not number:
             return Response({'detail': 'certificate_number wajib diisi.'}, status=status.HTTP_400_BAD_REQUEST)
         cert.certificate_number = number
+        if cert.source == Certificate.Source.UPLOADED:
+            cert.save(update_fields=['certificate_number', 'updated_at'])
+            return Response(CertificateSerializer(cert, context={'request': request}).data)
         template = cert.event.certificate_template
         cert.status = Certificate.Status.AVAILABLE if template and template.background_image and template.signature_image else Certificate.Status.PROCESSING
         cert.save(update_fields=['certificate_number', 'status', 'updated_at'])

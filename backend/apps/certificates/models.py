@@ -1,5 +1,6 @@
 import uuid
 
+from django.conf import settings
 from django.db import models
 
 
@@ -124,3 +125,29 @@ class Certificate(models.Model):
         if not self.download_token:
             self.download_token = uuid.uuid4().hex
         super().save(*args, **kwargs)
+
+
+class CertificateImportBatch(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event = models.ForeignKey('events.Event', on_delete=models.CASCADE)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(db_index=True)
+    applied_at = models.DateTimeField(null=True, blank=True)
+    snapshot = models.CharField(max_length=64)
+
+
+class CertificateImportItem(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    batch = models.ForeignKey(CertificateImportBatch, on_delete=models.CASCADE, related_name='items')
+    filename = models.CharField(max_length=255)
+    page_start = models.PositiveIntegerField()
+    page_end = models.PositiveIntegerField()
+    private_path = models.CharField(max_length=255)
+    detected_name = models.CharField(max_length=200, blank=True)
+    participant = models.ForeignKey('participants.Participant', null=True, blank=True, on_delete=models.SET_NULL)
+    match_status = models.CharField(max_length=30)
+    certificate_number = models.CharField(max_length=100, blank=True)
+
+    class Meta:
+        ordering = ['page_start', 'id']

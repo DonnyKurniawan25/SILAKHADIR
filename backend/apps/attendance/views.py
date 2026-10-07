@@ -177,12 +177,8 @@ class PublicAttendanceView(APIView):
                 'code': 'already_attended',
             }, status=status.HTTP_409_CONFLICT)
 
-        # Buat draft preview setelah attendance; nomor/background/signature tetap
-        # dikendalikan admin melalui workflow certificates.
-        try:
-            generate_certificates_for_event(event, regenerate=False)
-        except Exception:
-            logger.exception('Gagal membuat sertifikat awal untuk event %s', event.id)
+        # Canva workflow: attendance records presence only. The admin uploads
+        # final participant PDFs later; never generate/overlay certificates here.
 
         return Response({
             'detail': 'Absensi berhasil direkam.',
