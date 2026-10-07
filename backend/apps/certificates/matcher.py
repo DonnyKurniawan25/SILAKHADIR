@@ -43,62 +43,37 @@ def extract_text_from_pdf(file_obj) -> str:
 
 # --- Nomor sertifikat -------------------------------------------------------
 
-# Pola fleksibel untuk nomor sertifikat:
-# - Ada label "Nomor", "No.", "Nomor Sertifikat", dll -> ambil baris berikutnya
-# - Pola umum: 001/ABC/DEF/V/2026 (segmen dipisah '/', minimal 3 segmen)
-NUMBER_LABELS = [
-    r'nomor\s+sertifikat',
-    r'no\.?\s+sertifikat',
-    r'nomor',
-    r'no\.?',
-]
-
-# Minimal 3 segmen, terdiri dari huruf/angka/strip/underscore.
-SEGMENT = r'[A-Za-z0-9_\-]+'
-NUMBER_PATTERN = re.compile(
-    rf'({SEGMENT}(?:\s*[/\-\.]\s*{SEGMENT}){{2,}})'
-)
-
-
 def extract_certificate_number(text: str) -> str | None:
-    """Coba ekstrak nomor sertifikat dari teks PDF.
+    """Suggest one unambiguous explicitly labelled number, never truncate/guess.
 
-    Strategi:
-    1. Cari label "Nomor" / "No." lalu ambil teks di sebelahnya.
-    2. Jika tidak ada label, cari pola nomor umum pada baris awal PDF.
+    Numeric and separated values are supported, including a label/value split
+    across lines. Unlabelled values deliberately require manual review.
     """
     if not text:
         return None
 
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
-    joined = '\n'.join(lines)
-
-    # 1) Cari via label
-    for label in NUMBER_LABELS:
-        m = re.search(
-            rf'(?i){label}\s*[:\-]?\s*({SEGMENT}(?:\s*[/\-\.]\s*{SEGMENT}){{1,}})',
-            joined,
-        )
-        if m:
-            number = _cleanup_number(m.group(1))
-            if _looks_like_number(number):
-                return number
-
-    # 2) Cari pola umum dalam baris awal
-    for line in lines[:30]:
-        m = NUMBER_PATTERN.search(line)
-        if m:
-            number = _cleanup_number(m.group(1))
-            if _looks_like_number(number):
-                return number
-
-    # 3) Fallback: scan seluruh teks
-    m = NUMBER_PATTERN.search(joined)
-    if m:
-        number = _cleanup_number(m.group(1))
-        if _looks_like_number(number):
-            return number
-    return None
+    # Only explicit labels are evidence. Never guess from dates/NIP elsewhere.
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    label = re.compile(r'^(?:nomor\b|no\b\.?)(?:[ \t]+sertifikat)?[ \t]*[:\-]?[ \t]*(.*)$', re.I)
+    candidates = set()
+    for i, line in enumerate(lines):
+        match = label.fullmatch(line)
+        if not match:
+            continue
+        raw = match.group(1).strip()
+        j = i + 1
+        if not raw and j < len(lines) and lines[j] in (':', '-', '.'):
+            j += 1
+        if not raw and j < len(lines):
+            raw = lines[j]
+        # Consume the entire value, not a plausible prefix of ambiguous text.
+        if not re.fullmatch(r'[A-Za-z0-9_]+(?:[ \t]*[/.-][ \t]*[A-Za-z0-9_]+)*', raw):
+            return None
+        number = _cleanup_number(raw)
+        if not _looks_like_number(number):
+            return None
+        candidates.add(number)
+    return next(iter(candidates)) if len(candidates) == 1 else None
 
 
 def _cleanup_number(raw: str) -> str:
@@ -107,13 +82,12 @@ def _cleanup_number(raw: str) -> str:
 
 def _looks_like_number(candidate: str) -> bool:
     """Filter false-positive: hindari nama orang dst."""
-    if not candidate:
+    if not candidate or len(candidate) > 100 or not any(ch.isdigit() for ch in candidate):
         return False
-    # Harus mengandung minimal satu angka
-    if not any(ch.isdigit() for ch in candidate):
+    # Identity numbers and calendar dates are not safe certificate suggestions.
+    if re.fullmatch(r'\d{16,18}', candidate):
         return False
-    # Harus punya minimal 2 separator (3 segmen)
-    if candidate.count('/') + candidate.count('-') + candidate.count('.') < 2:
+    if re.fullmatch(r'(?:\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|\d{4}[/.-]\d{1,2}[/.-]\d{1,2})', candidate):
         return False
     return True
 

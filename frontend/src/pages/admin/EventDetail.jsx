@@ -12,6 +12,7 @@ import ParticipantList from './ParticipantList'
 import UploadCertificateModal from './UploadCertificateModal'
 import BulkUploadModal from './BulkUploadModal'
 import PdfPreviewModal from './PdfPreviewModal'
+import CertificateNumberEditor from '../../components/CertificateNumberEditor'
 import { getAuthenticatedPdf } from '../../api/finalImportApi'
 import { importError } from '../../utils/importWorkflow.mjs'
 import EventReportTab from './EventReportTab'
@@ -252,7 +253,7 @@ export default function EventDetail() {
 
       {tab === 'participants' && <ParticipantList eventId={id} refreshVersion={refreshVersion} onChanged={loadEvent} />}
       {tab === 'certificates' && (
-        <CertTab eventId={id} certs={certs} onRefresh={loadEvent} onImport={() => setBulkOpen(true)} />
+        <CertTab eventId={id} certs={certs} onRefresh={loadEvent} onImport={() => setBulkOpen(true)} canManageNumbers={canUploadThumbnail} />
       )}
       {tab === 'report' && <EventReportTab eventId={id} />}
 
@@ -294,7 +295,7 @@ const DEFAULT_CERT_LAYOUT = {
   name_font_size: 36, number_font_size: 14,
 }
 
-function CertTab({ eventId, certs, onRefresh, onImport }) {
+function CertTab({ eventId, certs, onRefresh, onImport, canManageNumbers = false }) {
   const [pdfPreview, setPdfPreview] = useState('')
   const [downloading, setDownloading] = useState(null)
   const [legacyOpen, setLegacyOpen] = useState(false)
@@ -347,6 +348,7 @@ function CertTab({ eventId, certs, onRefresh, onImport }) {
       <button type="button" onClick={onImport} className="btn-primary"><UploadCloud className="w-4 h-4" /> Impor dan tinjau PDF final</button>
       <p className="text-xs text-ink-500">Untuk mengganti PDF, impor kembali dan pilih “Ganti sertifikat yang sudah ada” setelah memeriksa peserta.</p>
     </section>
+    {canManageNumbers && <CertificateNumberEditor eventId={eventId} certificates={certs} onRefresh={onRefresh} />}
     <div className="flex flex-wrap gap-2">
       <button type="button" disabled={verificationBusy || !certs.length} onClick={() => handleVerification(false)} className="btn-primary">Verifikasi semua</button>
       <button type="button" disabled={verificationBusy || !certs.length} onClick={() => handleVerification(true)} className="btn-outline">Batalkan verifikasi semua</button>

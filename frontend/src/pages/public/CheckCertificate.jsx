@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Search, Download, QrCode, Loader2, Calendar, Building2, FileText, ShieldCheck, ShieldAlert } from 'lucide-react'
+import { Search, Download, Loader2, Calendar, Building2, FileText, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { checkPublicCertificate, downloadPublicCertificate } from '../../api/publicCertificateApi'
 import { certificateSearchParams, certificateDownloadUrl, certificateStatus, formatCertificateDates } from '../../api/publicCertificateHelpers.mjs'
 
@@ -28,8 +28,8 @@ export function CertificateCard({ certificate: c }) {
     try { await downloadPublicCertificate(c) } catch (err) { setError(err.message || 'Unduhan gagal. Silakan coba kembali.') } finally { setDownloading(false) }
   }
   return <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col sm:flex-row">
-    <div className="relative h-44 sm:h-auto sm:min-h-[250px] sm:w-56 lg:w-64 shrink-0 overflow-hidden bg-ink-900">
-      {c.thumbnail_url && !imageFailed ? <img src={c.thumbnail_url} alt={`Sampul kegiatan ${c.event_title}`} loading="lazy" onError={() => setImageFailed(true)} className="h-full w-full object-cover sm:absolute sm:inset-0" /> : <div className="h-full min-h-44 sm:min-h-[250px] flex flex-col justify-center items-center gap-3 bg-gradient-to-br from-ink-900 via-slate-800 to-teal-800 text-white p-6 text-center">
+    <div className="relative sm:w-72 lg:w-80 shrink-0 flex items-center justify-center bg-slate-100">
+      {c.thumbnail_url && !imageFailed ? <img src={c.thumbnail_url} alt={`Sampul kegiatan ${c.event_title}`} loading="lazy" onError={() => setImageFailed(true)} className="w-full h-auto max-h-[32rem] object-contain" /> : <div className="w-full h-full min-h-44 sm:min-h-[250px] flex flex-col justify-center items-center gap-3 bg-gradient-to-br from-ink-900 via-slate-800 to-teal-800 text-white p-6 text-center">
         <div className="rounded-2xl border border-white/20 bg-white/10 p-4"><FileText aria-hidden="true" className="h-9 w-9 text-amber-300" /></div>
         <span className="text-xs tracking-widest uppercase text-white/80">Sertifikat Kegiatan</span>
         <span className="text-sm font-semibold leading-snug">{c.organizer || 'SILAKHADIR'}</span>
@@ -50,7 +50,7 @@ export function CertificateCard({ certificate: c }) {
       {!status.verified && <p className="mt-2 text-xs text-amber-800">{downloadable ? 'PDF dapat diunduh. Pengesahan sertifikat masih menunggu penyelenggara.' : 'Sertifikat masih diproses oleh penyelenggara.'}</p>}
       <div className="flex flex-col lg:flex-row gap-2 mt-5">
         {downloadable && <button type="button" onClick={download} disabled={downloading} className="btn-primary justify-center">{downloading ? <Loader2 aria-hidden="true" className="w-4 h-4 animate-spin" /> : <Download aria-hidden="true" className="w-4 h-4" />}{downloading ? 'Mengunduh…' : 'Unduh Sertifikat'}</button>}
-        {c.verify_url && <a href={c.verify_url} target="_blank" rel="noopener noreferrer" className="btn-outline justify-center"><QrCode aria-hidden="true" className="w-4 h-4" />Cek keaslian<span className="sr-only"> (tab baru)</span></a>}
+
       </div>
       {error && <p role="alert" className="mt-3 text-sm text-rose-700">{error}</p>}
     </div>
@@ -86,7 +86,7 @@ export default function CheckCertificate() {
   }, [initial, eventId])
   return <div className="max-w-5xl mx-auto px-4 py-8 sm:py-12">
     <nav aria-label="Breadcrumb" className="text-xs text-ink-500 mb-5"><Link to="/">Beranda</Link><span className="mx-2">/</span><span className="font-semibold text-ink-900">Cek Sertifikat</span></nav>
-    <header className="mb-7"><div className="eyebrow">Layanan Publik · Sertifikat Kegiatan</div><h1 className="section-title mt-2">Temukan sertifikat Anda</h1><p className="mt-3 text-sm sm:text-base text-ink-500 max-w-2xl">Cari sertifikat kegiatan, unduh dokumen PDF, dan periksa keasliannya dalam satu tempat.</p></header>
+    <header className="mb-7"><div className="eyebrow">Layanan Publik · Sertifikat Kegiatan</div><h1 className="section-title mt-2">Temukan sertifikat Anda</h1><p className="mt-3 text-sm sm:text-base text-ink-500 max-w-2xl">Cari sertifikat kegiatan dan unduh dokumen PDF Anda dalam satu tempat.</p></header>
     <CertificateSearchForm identity={identity} onChange={e => { setIdentity(e.target.value); setError('') }} onSubmit={e => { e.preventDefault(); search(identity) }} loading={loading} error={error} />
     <section aria-live="polite" aria-busy={loading} className="mt-7">
       {loading && <p role="status" className="flex items-center gap-2 text-sm text-ink-500"><Loader2 aria-hidden="true" className="w-4 h-4 animate-spin" />Mencari sertifikat Anda…</p>}

@@ -7,6 +7,8 @@ import { previewFinalCertificates, applyFinalCertificates } from '../../api/fina
 import { parsePageGroups, validateFiles, validateAssignments, importError } from '../../utils/importWorkflow.mjs'
 import { initializeCertificateReview, updateCertificateReview, canVerifyCertificateRow, verifyCertificateRow, verifyAllCertificates, certificateReviewError, certificateAssignments } from '../../utils/certificateReview.mjs'
 
+import { applyCertificateNumberMode, updateCertificateNumber, certificateNumberError } from '../../utils/certificateNumbers.mjs'
+
 const MATCH_LABELS = { matched: 'Cocok otomatis', exact: 'Cocok persis', ready: 'Siap ditinjau', unmatched: 'Belum cocok', ambiguous: 'Nama ambigu', duplicate: 'Peserta duplikat', manual: 'Periksa manual', needs_review: 'Perlu verifikasi' }
 
 export default function BulkUploadModal({ open, onClose, eventId, onUploaded, single = false }) {
@@ -18,13 +20,15 @@ export default function BulkUploadModal({ open, onClose, eventId, onUploaded, si
   const [batch, setBatch] = useState(null)
   const [items, setItems] = useState([])
   const [replaceExisting, setReplaceExisting] = useState(false)
+  const [numberMode, setNumberMode] = useState('detected')
+  const [commonNumber, setCommonNumber] = useState('')
 
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [previewUrl, setPreviewUrl] = useState('')
   const requestVersion = useRef(0)
 
-  const invalidate = () => { requestVersion.current += 1; setBatch(null); setItems([]); setReplaceExisting(false); setError(''); setPreviewUrl('') }
+  const invalidate = () => { requestVersion.current += 1; setBatch(null); setItems([]); setReplaceExisting(false); setNumberMode('detected'); setCommonNumber(''); setBusy(''); setError(''); setPreviewUrl('') }
   useEffect(() => {
     if (open) {
       setFiles([]); setMode(single ? 'separate' : 'combined'); setPages(1); setCustom(false); setRanges(''); invalidate()
@@ -62,7 +66,7 @@ export default function BulkUploadModal({ open, onClose, eventId, onUploaded, si
       if (version !== requestVersion.current) return
       if (!data.batch_id || !Array.isArray(data.items) || !Array.isArray(data.participants)) throw new Error('Respons pratinjau tidak lengkap. Coba kembali.')
       setBatch(data)
-      setItems(initializeCertificateReview(data.items, data.participants))
+      setItems(initializeCertificateReview(data.items.map(item => ({ ...item, certificate_number: item.detected_number ?? item.certificate_number ?? '', detected_number: item.detected_number ?? item.certificate_number ?? '' })), data.participants))
     } catch (err) { if (version === requestVersion.current) setError(importError(err, err.message || 'Gagal membuat pratinjau PDF.')) }
     finally { if (version === requestVersion.current) setBusy('') }
   }
@@ -72,8 +76,22 @@ export default function BulkUploadModal({ open, onClose, eventId, onUploaded, si
   const assigned = items.filter((item) => item.participant_id !== '' && item.participant_id != null)
   const verifiedCount = assigned.filter((item) => item.verified).length
   const updateItem = (id, field, value) => {
-    setItems((current) => updateCertificateReview(current, id, field, value))
+    setItems((current) => field === 'certificate_number' ? updateCertificateNumber(current, id, value) : current.find(item => item.id === id)?.[field] === value ? current : updateCertificateReview(current, id, field, value))
     setError('')
+  }
+  const applyCommonNumber = async () => {
+    if (busy) return
+    const validation = certificateNumberError(commonNumber)
+    if (validation) { setError(validation); return }
+    const version = requestVersion.current
+    setBusy('number-confirm')
+    try {
+      if (!commonNumber.trim()) {
+        const { isConfirmed } = await Swal.fire({ icon: 'warning', title: 'Kosongkan semua nomor impor?', text: 'Nomor metadata pada semua baris pratinjau akan dikosongkan. PDF asli tidak diubah.', showCancelButton: true, confirmButtonText: 'Ya, kosongkan', cancelButtonText: 'Batal' })
+        if (!isConfirmed || version !== requestVersion.current) return
+      }
+      if (version === requestVersion.current) { setItems(current => applyCertificateNumberMode(current, 'same', commonNumber.trim())); setError('') }
+    } finally { if (version === requestVersion.current) setBusy('') }
   }
   const apply = async () => {
     if (!batch || busy || reviewError) return
@@ -123,6 +141,14 @@ export default function BulkUploadModal({ open, onClose, eventId, onUploaded, si
           <h4 className="font-semibold">2. Tinjau dan koreksi pemetaan ({items.length} berkas)</h4>
           <p className="text-sm text-ink-500">Hanya peserta hadir dari server tersedia di pilihan. Nama hasil deteksi bukan bukti pasti; periksa PDF dan identitas peserta. Pilih “Lewati” untuk berkas yang tidak cocok. Nomor bersifat metadata opsional, tidak dicetak ke PDF.</p>
           {!batch.participants.length && <p role="alert" className="text-amber-700">Belum ada peserta hadir untuk dipetakan. Unggah absensi dahulu, kemudian buat pratinjau ulang.</p>}
+          <fieldset disabled={Boolean(busy)} className="rounded border p-3 space-y-2">
+            <label className="label">Mode nomor sertifikat<select className="input mt-1" value={numberMode} onChange={e => setNumberMode(e.target.value)}>
+              <option value="detected">Berbeda per peserta / hasil deteksi No: dari PDF</option>
+              <option value="same">Nomor sama untuk semua berkas impor</option>
+            </select></label>
+            <p className="text-xs text-ink-500">Nomor hasil deteksi server diisi saat pratinjau dibuat. Semua nomor tetap dapat dikoreksi per baris; mengganti mode saja tidak menimpa koreksi. Perubahan nomor membatalkan verifikasi hanya pada baris yang berubah.</p>
+            {numberMode === 'same' && <div className="flex flex-wrap items-end gap-2"><label className="label flex-1">Nomor bersama (maksimal 100 karakter)<input className="input mt-1" maxLength={100} value={commonNumber} onChange={e => setCommonNumber(e.target.value)} placeholder="Boleh kosong dengan konfirmasi" /></label><button type="button" className="btn-outline" onClick={applyCommonNumber}>Terapkan ke semua berkas impor</button></div>}
+          </fieldset>
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" className="btn-outline" disabled={Boolean(busy) || Boolean(mappingError)} onClick={() => setItems((current) => verifyAllCertificates(current, batch.participants, true))}>Verifikasi SEMUA</button>
             <button type="button" className="btn-outline" disabled={Boolean(busy) || !verifiedCount} onClick={() => setItems((current) => verifyAllCertificates(current, batch.participants, false))}>Batalkan SEMUA verifikasi</button>
@@ -134,7 +160,7 @@ export default function BulkUploadModal({ open, onClose, eventId, onUploaded, si
               <td><div className="text-sm break-all">{item.filename}</div><div className="text-xs text-ink-500">Halaman {item.page_start ?? '-'}–{item.page_end ?? '-'} ({item.page_count ?? '-'} halaman)</div></td>
               <td><div>{item.detected_name || 'Nama tidak terdeteksi'}</div><span className="text-xs text-ink-500">{MATCH_LABELS[item.match_status] || 'Periksa hasil pencocokan'}</span>{item.participant_name && <div className="text-xs">Saran: {item.participant_name}</div>}</td>
               <td><CertificateParticipantSelect label={`Peserta untuk ${item.filename}, halaman ${item.page_start}`} participants={batch.participants} disabled={Boolean(busy)} value={item.participant_id} onChange={(value) => updateItem(item.id, 'participant_id', value)} /></td>
-              <td><input aria-label={`Nomor sertifikat ${item.filename}`} disabled={Boolean(busy)} className="input min-w-[170px]" value={item.certificate_number} onChange={(e) => updateItem(item.id, 'certificate_number', e.target.value)} placeholder="Boleh kosong" /></td>
+              <td><input aria-label={`Nomor sertifikat ${item.filename}`} maxLength={100} disabled={Boolean(busy)} className="input min-w-[170px]" value={item.certificate_number} onChange={(e) => updateItem(item.id, 'certificate_number', e.target.value)} placeholder="Boleh kosong" /></td>
               <td>{item.preview_url ? <button type="button" disabled={Boolean(busy)} className="btn-outline" onClick={() => setPreviewUrl(item.preview_url)}>Lihat PDF</button> : <span className="text-xs text-ink-500">Tidak tersedia</span>}</td>
               <td><div className="space-y-1"><span className={`block text-xs ${item.verified ? 'text-green-700' : 'text-ink-500'}`}>{item.verified ? 'Terverifikasi' : item.participant_id === '' ? 'Dilewati' : 'Belum diverifikasi'}</span><button type="button" aria-label={`${item.verified ? 'Batalkan verifikasi' : 'Verifikasi'} ${item.filename}, halaman ${item.page_start}`} className="btn-outline whitespace-nowrap" disabled={Boolean(busy) || (!item.verified && !canVerifyCertificateRow(items, item, batch.participants))} onClick={() => setItems((current) => verifyCertificateRow(current, item.id, batch.participants, !item.verified))}>{item.verified ? 'Batalkan verifikasi' : 'Verifikasi'}</button></div></td>
             </tr>)}

@@ -226,6 +226,64 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
     def cancel_verification_all(self, request, event_id=None):
         return self._set_verification_status(request, event_id, Certificate.Status.PROCESSING)
 
+    @action(detail=False, methods=['post'], url_path='number', parser_classes=[JSONParser])
+    def number(self, request, event_id=None):
+        """Correct metadata only; signed PDFs, QR and verification stay intact."""
+        import uuid
+        from collections.abc import Mapping
+        from django.db import transaction
+        from django.utils import timezone
+        from rest_framework.exceptions import ValidationError
+
+        if not isinstance(request.data, Mapping):
+            raise ValidationError({'detail': 'Body harus berupa objek JSON.'})
+        value = request.data.get('certificate_number')
+        import unicodedata
+        if (not isinstance(value, str) or len(value) > 100 or
+                any(unicodedata.category(ch) in ('Cc', 'Cf', 'Cs') for ch in value)):
+            raise ValidationError({'certificate_number': 'Wajib berupa teks, maksimal 100 karakter (boleh kosong).'})
+        certificate_id = None
+        if 'certificate_id' in request.data:
+            try:
+                if not isinstance(request.data['certificate_id'], str):
+                    raise ValueError
+                certificate_id = uuid.UUID(request.data['certificate_id'])
+            except (ValueError, TypeError, AttributeError):
+                raise ValidationError({'certificate_id': 'Wajib berupa UUID sertifikat yang valid.'})
+        with transaction.atomic():
+            get_object_or_404(Event.objects.select_for_update(), pk=event_id)
+            queryset = Certificate.objects.filter(event_id=event_id).order_by('pk').select_for_update()
+            if certificate_id is not None:
+                ids = [get_object_or_404(queryset, pk=certificate_id).pk]
+            else:
+                ids = list(queryset.values_list('pk', flat=True))
+            updated = Certificate.objects.filter(pk__in=ids).update(
+                certificate_number=value, updated_at=timezone.now(),
+            ) if ids else 0
+            return Response({'updated_count': updated, 'certificate_number': value})
+
+    @action(detail=False, methods=['post'], url_path='detect-numbers', parser_classes=[JSONParser])
+    def detect_numbers(self, request, event_id=None):
+        """Read existing final PDFs for reviewer suggestions; never save anything."""
+        from .bounded_detector import DetectionBudget, detect_number
+        get_object_or_404(Event, pk=event_id)
+        budget = DetectionBudget()
+        items = []
+        queryset = Certificate.objects.filter(event_id=event_id).select_related('participant').order_by('pk')
+        for cert in queryset.iterator():
+            detected = ''
+            if cert.pdf_file and budget.available():
+                try:
+                    with cert.pdf_file.open('rb') as pdf:
+                        detected = detect_number(pdf, budget)
+                except Exception:
+                    # Failed storage opens also count against the attempted-file budget.
+                    budget.files -= 1
+            items.append({'id': str(cert.pk), 'certificate_number': cert.certificate_number,
+                          'participant_name': cert.participant.full_name,
+                          'detected_number': detected})
+        return Response({'items': items, 'count': len(items)})
+
     @action(detail=False, methods=['post'], url_path='import-preview')
     def import_preview(self, request, event_id=None):
         from .imports import create_preview

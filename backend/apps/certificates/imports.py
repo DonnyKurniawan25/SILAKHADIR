@@ -191,7 +191,7 @@ def _create_preview(event, owner, files, data, temporary_files):
                     result = output
                 prepared.append((dict(filename=Path(f.name).name[:255], page_start=start, page_end=end,
                     detected_name=detected, participant=person, match_status=match_status,
-                    certificate_number=(extract_certificate_number(text) or '')[:100]), result))
+                    certificate_number=extract_certificate_number(text) or ''), result))
         except ValidationError:
             raise
         except Exception as exc:
