@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Download, Upload, Plus, Pencil, Trash2 } from 'lucide-react'
 import Swal from 'sweetalert2'
 import DataTable from '../../components/DataTable'
 import ModalForm from '../../components/ModalForm'
 import {
   createParticipant, deleteParticipant, listParticipants,
-  updateParticipant,
+  updateParticipant, lookupParticipantSystem,
 } from '../../api/eventApi'
 import AttendanceUploadModal from './AttendanceUploadModal'
 import { downloadAttendanceXlsx } from '../../api/finalImportApi'
@@ -121,10 +121,72 @@ export default function ParticipantList({ eventId, onChanged, refreshVersion }) 
 }
 
 function ParticipantForm({ eventId, participant, onSaved }) {
-  const { register, handleSubmit, formState: { isSubmitting, errors }, watch } = useForm({
+  const { register, handleSubmit, formState: { isSubmitting, errors }, watch, setValue } = useForm({
     defaultValues: participant || { is_asn: false, nip: '' },
   })
   const isAsn = watch('is_asn')
+  const nikValue = watch('nik')
+  const nipValue = watch('nip')
+  const [lookingUp, setLookingUp] = useState(false)
+  const [lookupFeedback, setLookupFeedback] = useState(null)
+  const lastLookedUpRef = useRef({ nik: '', nip: '' })
+
+  const triggerLookup = async ({ nik, nip }) => {
+    if (participant?.id && !nik && !nip) return
+    const cleanNik = (nik || '').trim()
+    const cleanNip = (nip || '').trim()
+    if (!cleanNik && !cleanNip) return
+
+    if (cleanNik && lastLookedUpRef.current.nik === cleanNik) return
+    if (cleanNip && lastLookedUpRef.current.nip === cleanNip) return
+
+    try {
+      setLookingUp(true)
+      const params = {}
+      if (cleanNik) params.nik = cleanNik
+      if (cleanNip) params.nip = cleanNip
+      const res = await lookupParticipantSystem(eventId, params)
+      if (res.data?.found) {
+        const d = res.data
+        if (cleanNik) lastLookedUpRef.current.nik = cleanNik
+        if (cleanNip) lastLookedUpRef.current.nip = cleanNip
+
+        if (d.full_name) setValue('full_name', d.full_name, { shouldValidate: true })
+        if (d.nik) setValue('nik', d.nik, { shouldValidate: true })
+        if (d.nip) {
+          setValue('nip', d.nip, { shouldValidate: true })
+          setValue('is_asn', true, { shouldValidate: true })
+        }
+        if (d.institution) setValue('institution', d.institution)
+        if (d.position) setValue('position', d.position)
+        if (d.phone) setValue('phone', d.phone)
+        if (d.email) setValue('email', d.email)
+
+        setLookupFeedback({
+          type: 'success',
+          text: `Data "${d.full_name}" ditemukan di sistem dan terisi otomatis.`,
+        })
+      } else {
+        if (cleanNik) lastLookedUpRef.current.nik = cleanNik
+        if (cleanNip) lastLookedUpRef.current.nip = cleanNip
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLookingUp(false)
+    }
+  }
+
+  useEffect(() => {
+    const v = (nikValue || '').trim()
+    if (v.length === 16) triggerLookup({ nik: v })
+  }, [nikValue])
+
+  useEffect(() => {
+    const v = (nipValue || '').trim()
+    if (v.length === 18) triggerLookup({ nip: v })
+  }, [nipValue])
+
   const onSubmit = async (data) => {
     try {
       const payload = { ...data, nip: data.is_asn ? data.nip : '' }
@@ -138,6 +200,18 @@ function ParticipantForm({ eventId, participant, onSaved }) {
   }
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
+      {lookingUp && (
+        <div className="text-xs text-blue-600 flex items-center gap-1.5 py-1">
+          <span className="inline-block w-2.5 h-2.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></span>
+          Memeriksa data di sistem...
+        </div>
+      )}
+      {lookupFeedback && (
+        <div className="text-xs bg-emerald-50 border border-emerald-200 text-emerald-700 px-2.5 py-1.5 rounded flex items-center justify-between">
+          <span>{lookupFeedback.text}</span>
+          <button type="button" onClick={() => setLookupFeedback(null)} className="text-emerald-500 hover:text-emerald-800 ml-2">✕</button>
+        </div>
+      )}
       <div className="grid md:grid-cols-2 gap-3">
         <div>
           <label className="label">NIK *</label>
@@ -151,6 +225,10 @@ function ParticipantForm({ eventId, participant, onSaved }) {
               minLength: { value: 16, message: 'NIK harus 16 digit' },
               maxLength: { value: 16, message: 'NIK harus 16 digit' },
             })}
+            onBlur={() => {
+              const v = (nikValue || '').trim()
+              if (v.length >= 10) triggerLookup({ nik: v })
+            }}
           />
           {errors.nik && <p className="text-xs text-rose-600 mt-1">{errors.nik.message}</p>}
         </div>
@@ -175,6 +253,10 @@ function ParticipantForm({ eventId, participant, onSaved }) {
               minLength: { value: 18, message: 'NIP harus 18 digit' },
               maxLength: { value: 18, message: 'NIP harus 18 digit' },
             })}
+            onBlur={() => {
+              const v = (nipValue || '').trim()
+              if (v.length >= 10) triggerLookup({ nip: v })
+            }}
           />
           {errors.nip && <p className="text-xs text-rose-600 mt-1">{errors.nip.message}</p>}
         </div>

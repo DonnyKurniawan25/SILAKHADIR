@@ -11,6 +11,8 @@ export const finishEvent = (id) => api.post(`/events/${id}/finish/`)
 
 export const listParticipants = (eventId, params) =>
   api.get(`/events/${eventId}/participants/`, { params })
+export const lookupParticipantSystem = (eventId, params) =>
+  api.get(eventId ? `/events/${eventId}/participants/lookup/` : '/participants/lookup/', { params })
 export const createParticipant = (eventId, data) =>
   api.post(`/events/${eventId}/participants/`, data)
 export const updateParticipant = (id, data) => api.put(`/participants/${id}/`, data)

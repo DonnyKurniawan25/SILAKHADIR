@@ -15,11 +15,67 @@ from .models import Participant
 from .serializers import ParticipantSerializer
 
 
+def _find_participant_by_identity(nik='', nip=''):
+    nik = (nik or '').strip()
+    nip = (nip or '').strip()
+    if not nik and not nip:
+        return {'found': False}
+
+    qs = Participant.objects.all().order_by('-created_at')
+    match = None
+    if nik and nip:
+        match = qs.filter(nik=nik, nip=nip).first()
+    if not match and nik:
+        match = qs.filter(nik=nik).first()
+    if not match and nip:
+        match = qs.filter(nip=nip).first()
+
+    if match:
+        return {
+            'found': True,
+            'full_name': match.full_name or '',
+            'nik': match.nik or '',
+            'nip': match.nip or '',
+            'is_asn': bool(match.is_asn or match.nip),
+            'institution': match.institution or '',
+            'position': match.position or '',
+            'phone': match.phone or '',
+            'email': match.email or '',
+        }
+
+    if nip:
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        user_match = User.objects.filter(nip=nip).first()
+        if user_match:
+            return {
+                'found': True,
+                'full_name': user_match.get_full_name() or user_match.username,
+                'nik': '',
+                'nip': user_match.nip or '',
+                'is_asn': True,
+                'institution': getattr(user_match, 'institution', '') or 'Pemerintah Kabupaten Lombok Barat',
+                'position': getattr(user_match, 'jabatan', '') or '',
+                'phone': getattr(user_match, 'phone', '') or '',
+                'email': user_match.email or '',
+            }
+
+    return {'found': False}
+
+
 class EventParticipantViewSet(viewsets.ModelViewSet):
     serializer_class = ParticipantSerializer
     permission_classes = [IsAuthenticatedStaff]
     search_fields = ['full_name', 'nik', 'nip', 'institution', 'email']
     filterset_fields = ['is_asn']
+
+    @action(detail=False, methods=['get'], url_path='lookup')
+    def lookup(self, request, *args, **kwargs):
+        res = _find_participant_by_identity(
+            nik=request.query_params.get('nik'),
+            nip=request.query_params.get('nip'),
+        )
+        return Response(res)
 
     def get_queryset(self):
         event_id = self.kwargs.get('event_id')
@@ -133,3 +189,11 @@ class ParticipantViewSet(viewsets.ModelViewSet):
     queryset = Participant.objects.select_related('event')
     serializer_class = ParticipantSerializer
     permission_classes = [IsAuthenticatedStaff]
+
+    @action(detail=False, methods=['get'], url_path='lookup')
+    def lookup(self, request, *args, **kwargs):
+        res = _find_participant_by_identity(
+            nik=request.query_params.get('nik'),
+            nip=request.query_params.get('nip'),
+        )
+        return Response(res)
