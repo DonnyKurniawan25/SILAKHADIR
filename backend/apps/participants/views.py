@@ -1,10 +1,12 @@
 import io
 
 import openpyxl
+from django.db import IntegrityError
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
@@ -90,7 +92,23 @@ class EventParticipantViewSet(viewsets.ModelViewSet):
         return get_object_or_404(Event, id=self.kwargs['event_id'])
 
     def perform_create(self, serializer):
-        serializer.save(event=self._get_event())
+        event = self._get_event()
+        nik = (serializer.validated_data.get('nik') or '').strip()
+        nip = (serializer.validated_data.get('nip') or '').strip()
+        if nik and Participant.objects.filter(event=event, nik=nik).exists():
+            raise ValidationError({
+                'nik': f'Peserta dengan NIK {nik} sudah terdaftar pada kegiatan ini.'
+            })
+        if nip and Participant.objects.filter(event=event, nip=nip).exists():
+            raise ValidationError({
+                'nip': f'Peserta dengan NIP {nip} sudah terdaftar pada kegiatan ini.'
+            })
+        try:
+            serializer.save(event=event)
+        except IntegrityError:
+            raise ValidationError({
+                'detail': 'Peserta dengan NIK atau NIP ini sudah terdaftar pada kegiatan ini.'
+            })
 
     @action(detail=False, methods=['post'], url_path='import-excel',
             parser_classes=[MultiPartParser, FormParser])
@@ -189,6 +207,26 @@ class ParticipantViewSet(viewsets.ModelViewSet):
     queryset = Participant.objects.select_related('event')
     serializer_class = ParticipantSerializer
     permission_classes = [IsAuthenticatedStaff]
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        event = instance.event
+        nik = (serializer.validated_data.get('nik') or '').strip()
+        nip = (serializer.validated_data.get('nip') or '').strip()
+        if nik and Participant.objects.filter(event=event, nik=nik).exclude(id=instance.id).exists():
+            raise ValidationError({
+                'nik': f'Peserta dengan NIK {nik} sudah terdaftar pada kegiatan ini.'
+            })
+        if nip and Participant.objects.filter(event=event, nip=nip).exclude(id=instance.id).exists():
+            raise ValidationError({
+                'nip': f'Peserta dengan NIP {nip} sudah terdaftar pada kegiatan ini.'
+            })
+        try:
+            serializer.save()
+        except IntegrityError:
+            raise ValidationError({
+                'detail': 'Peserta dengan NIK atau NIP ini sudah terdaftar pada kegiatan ini.'
+            })
 
     @action(detail=False, methods=['get'], url_path='lookup')
     def lookup(self, request, *args, **kwargs):

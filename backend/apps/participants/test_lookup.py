@@ -88,3 +88,29 @@ class ParticipantLookupTests(TestCase):
         res_custom = self.client.get(f'/api/events/{self.event.id}/participants/?page_size=50')
         self.assertEqual(res_custom.status_code, 200)
         self.assertEqual(len(res_custom.data['results']), 26)
+
+    def test_duplicate_participant_returns_400_validation_error(self):
+        # Trying to add p1's NIK again to the same event
+        payload = {
+            'full_name': 'Bagus Duplikat',
+            'nik': '5204132512970001',
+            'nip': '199712252020121099',
+            'is_asn': True,
+        }
+        res = self.client.post(f'/api/events/{self.event.id}/participants/', payload)
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('nik', res.data)
+        self.assertIn('sudah terdaftar', str(res.data['nik']))
+
+        # Trying to add p1's NIP again to the same event
+        payload_nip = {
+            'full_name': 'Bagus Duplikat NIP',
+            'nik': '5204132512979999',
+            'nip': '199712252020121001',
+            'is_asn': True,
+        }
+        res_nip = self.client.post(f'/api/events/{self.event.id}/participants/', payload_nip)
+        self.assertEqual(res_nip.status_code, 400)
+        self.assertIn('nip', res_nip.data)
+        self.assertIn('sudah terdaftar', str(res_nip.data['nip']))
+

@@ -195,7 +195,11 @@ function ParticipantForm({ eventId, participant, onSaved }) {
       Swal.fire({ icon: 'success', title: 'Tersimpan', timer: 1200, showConfirmButton: false })
       onSaved?.()
     } catch (e) {
-      Swal.fire({ icon: 'error', title: 'Gagal', text: JSON.stringify(e?.response?.data || {}) })
+      Swal.fire({
+        icon: 'error',
+        title: 'Gagal Menyimpan',
+        text: importError(e, 'Gagal menyimpan data peserta. Periksa kembali isian formulir.'),
+      })
     }
   }
   return (
