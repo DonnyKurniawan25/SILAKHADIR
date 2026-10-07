@@ -47,7 +47,9 @@ from .serializers import (
     CertificateNumberFormatSerializer,
     CertificatePublicSerializer,
     CertificateSerializer,
+    PublicCertificateLookupSerializer,
 )
+from .public import open_public_pdf
 from .services import (
     create_or_update_certificate,
     generate_certificates_for_event,
@@ -696,34 +698,36 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
 # ---------------------- PUBLIC ENDPOINTS ----------------------
 
 class PublicCheckCertificateView(APIView):
-    """Cek sertifikat berdasarkan NIK. Opsional filter event."""
+    """Cek sertifikat dengan NIK atau NIP persis. Opsional filter event."""
     permission_classes = [AllowAny]
 
     def get(self, request):
-        nik = (request.GET.get('nik') or request.GET.get('identity_number') or '').strip()
-        event_id = request.GET.get('event_id')
-
-        if not nik:
+        lookup = PublicCertificateLookupSerializer(data=request.query_params)
+        if not lookup.is_valid():
             return Response(
-                {'detail': 'nik wajib diisi.'},
+                {'detail': 'Masukkan NIK 16 digit atau NIP 18 digit yang valid; event_id harus UUID.',
+                 'errors': lookup.errors},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        data = lookup.validated_data
+        identities = {data[key] for key in ('identity', 'identity_number', 'nik', 'nip') if data.get(key)}
+        identity_filter = Q()
+        for identity in identities:
+            field = 'participant__nik' if len(identity) == 16 else 'participant__nip'
+            identity_filter |= Q(**{field: identity})
 
-        # Cari semua sertifikat lintas event untuk peserta dengan NIK yang sama.
         qs = (
             Certificate.objects
             .filter(
-                Q(participant__nik=nik) | Q(participant__nip=nik),
+                identity_filter,
                 status__in=[Certificate.Status.AVAILABLE, Certificate.Status.PROCESSING],
             )
-            .exclude(pdf_file='')
-            .exclude(pdf_file__isnull=True)
             .select_related('event', 'participant')
             .order_by('-event__start_date', '-generated_at')
         )
 
-        if event_id:
-            qs = qs.filter(event_id=event_id)
+        if data.get('event_id'):
+            qs = qs.filter(event_id=data['event_id'])
 
         if not qs.exists():
             return Response({
@@ -744,12 +748,13 @@ class PublicDownloadCertificateView(APIView):
             status__in=[Certificate.Status.AVAILABLE, Certificate.Status.PROCESSING],
             download_token=token,
         )
-        if not cert.pdf_file:
+        stream = open_public_pdf(cert)
+        if stream is None:
             raise Http404('File sertifikat tidak ditemukan.')
         return FileResponse(
-            cert.pdf_file.open('rb'),
-            as_attachment=False,
-            filename=f'{cert.certificate_number.replace("/", "_")}.pdf',
+            stream,
+            as_attachment=True,
+            filename=f'{(cert.certificate_number or str(cert.pk)).replace("/", "_")}.pdf',
             content_type='application/pdf',
         )
 

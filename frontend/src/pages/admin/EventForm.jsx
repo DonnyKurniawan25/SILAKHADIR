@@ -110,6 +110,12 @@ export default function EventForm({ event, onSaved }) {
         </div>
       </div>
 
+      <div className="border border-slate-200 rounded p-3 space-y-2">
+        <div className="eyebrow">Foto Thumbnail Kegiatan (Opsional)</div>
+        {event?.thumbnail_url && <img src={event.thumbnail_url} alt={`Thumbnail kegiatan ${event.title}`} className="w-full max-h-48 object-contain rounded" />}
+        <p className="text-xs text-ink-500">Foto tidak wajib diisi. Setelah kegiatan disimpan, admin dapat mengunggah atau mengganti foto melalui tombol “Upload Foto Thumbnail Kegiatan” pada halaman detail kegiatan.</p>
+      </div>
+
       <div className="pt-3 border-t border-slate-200">
         <button type="submit" disabled={isSubmitting} className="btn-primary w-full">
           {isSubmitting ? 'Menyimpan...' : 'Simpan'}

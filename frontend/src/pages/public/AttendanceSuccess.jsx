@@ -21,14 +21,14 @@ export default function AttendanceSuccess() {
             Kehadiran Anda pada kegiatan{state?.event_title ? <> <span className="font-semibold text-ink-900">&ldquo;{state.event_title}&rdquo;</span></> : ''} telah berhasil direkam dalam sistem.
           </p>
           <p className="text-sm text-ink-500">
-            Pratinjau sertifikat akan tersedia setelah admin mengunggah template kegiatan. Jika template belum diunggah, silakan menunggu proses penerbitan oleh admin.
+            Sertifikat dapat diunduh setelah admin mengunggah PDF sertifikat kegiatan. Gunakan NIK atau NIP untuk memeriksa ketersediaannya.
           </p>
         </div>
         <div className="bg-slate-50 border-t border-slate-200 p-6 flex flex-wrap gap-2">
           <Link to="/" className="btn-outline">
             <ArrowLeft className="w-4 h-4" /> Kembali ke Beranda
           </Link>
-          <Link to={state?.nik ? `/cek-sertifikat?nik=${encodeURIComponent(state.nik)}` : '/cek-sertifikat'} className="btn-primary">
+          <Link to={(state?.nik || state?.nip) ? `/cek-sertifikat?identity=${encodeURIComponent(state.nik || state.nip)}` : '/cek-sertifikat'} className="btn-primary">
             <FileCheck2 className="w-4 h-4" /> Lihat Sertifikat
           </Link>
         </div>

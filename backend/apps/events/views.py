@@ -1,16 +1,32 @@
+import logging
+import uuid
+
 from django.conf import settings
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 
 from apps.accounts.permissions import (
+    IsAdminOrSuperAdmin,
     IsAuthenticatedStaff,
     IsEventOwnerOrAdmin,
 )
 
 from .models import Event
-from .serializers import EventSerializer
+from .serializers import EventSerializer, EventThumbnailUploadSerializer
+
+
+logger = logging.getLogger(__name__)
+
+
+def delete_thumbnail(storage, name):
+    try:
+        storage.delete(name)
+    except Exception:
+        logger.exception('Could not remove event thumbnail %s', name)
 
 
 class EventViewSet(viewsets.ModelViewSet):
@@ -31,6 +47,33 @@ class EventViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='thumbnail',
+            permission_classes=[IsAdminOrSuperAdmin],
+            parser_classes=[MultiPartParser, FormParser])
+    def thumbnail(self, request, pk=None):
+        self.get_object()
+        serializer = EventThumbnailUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        upload = serializer.validated_data['thumbnail']
+        extension = {'PNG': 'png', 'JPEG': 'jpg', 'WEBP': 'webp'}[upload.thumbnail_format]
+        storage = Event._meta.get_field('thumbnail').storage
+        new_name = None
+        try:
+            with transaction.atomic():
+                event = Event.objects.select_for_update().get(pk=pk)
+                previous = event.thumbnail.name
+                # Persist a safe UUID filename, never an untrusted upload extension.
+                event.thumbnail.save(f'{uuid.uuid4().hex}.{extension}', upload, save=False)
+                new_name = event.thumbnail.name
+                event.save(update_fields=['thumbnail', 'updated_at'])
+                if previous and previous != new_name:
+                    transaction.on_commit(lambda: delete_thumbnail(storage, previous))
+        except Exception:
+            if new_name:
+                delete_thumbnail(storage, new_name)
+            raise
+        return Response(self.get_serializer(event).data)
 
     @action(detail=True, methods=['get'], url_path='attendance-link')
     def attendance_link(self, request, pk=None):

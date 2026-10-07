@@ -68,12 +68,28 @@ class CertificateSerializer(serializers.ModelSerializer):
         return None
 
 
+class PublicCertificateLookupSerializer(serializers.Serializer):
+    identity = serializers.RegexField(r'\A(?:[0-9]{16}|[0-9]{18})\Z', required=False, allow_blank=True, trim_whitespace=True)
+    identity_number = serializers.RegexField(r'\A(?:[0-9]{16}|[0-9]{18})\Z', required=False, allow_blank=True, trim_whitespace=True)
+    # Legacy callers used nik for either identity type.
+    nik = serializers.RegexField(r'\A(?:[0-9]{16}|[0-9]{18})\Z', required=False, allow_blank=True, trim_whitespace=True)
+    nip = serializers.RegexField(r'\A[0-9]{18}\Z', required=False, allow_blank=True, trim_whitespace=True)
+    event_id = serializers.UUIDField(required=False)
+
+    def validate(self, attrs):
+        if not any(attrs.get(key) for key in ('identity', 'identity_number', 'nik', 'nip')):
+            raise serializers.ValidationError('NIK (16 digit) atau NIP (18 digit) wajib diisi.')
+        return attrs
+
+
 class CertificatePublicSerializer(serializers.ModelSerializer):
     participant_name = serializers.CharField(source='participant.full_name', read_only=True)
     event_title = serializers.CharField(source='event.title', read_only=True)
     event_start = serializers.DateTimeField(source='event.start_date', read_only=True)
     event_end = serializers.DateTimeField(source='event.end_date', read_only=True)
     organizer = serializers.CharField(source='event.organizer', read_only=True)
+    thumbnail_url = serializers.SerializerMethodField()
+    can_download = serializers.SerializerMethodField()
     download_url = serializers.SerializerMethodField()
     verify_url = serializers.SerializerMethodField()
 
@@ -82,11 +98,30 @@ class CertificatePublicSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'certificate_number', 'status',
             'participant_name', 'event_title',
-            'event_start', 'event_end', 'organizer',
-            'download_url', 'verify_url',
+            'event_start', 'event_end', 'organizer', 'thumbnail_url',
+            'can_download', 'download_url', 'verify_url',
         )
 
+    def get_thumbnail_url(self, obj):
+        thumbnail = getattr(obj.event, 'thumbnail', None)
+        if not thumbnail:
+            return None
+        url = thumbnail.url
+        if url.startswith(('http://', 'https://')):
+            return url
+        return f'{settings.FRONTEND_URL.rstrip("/")}/{url.lstrip("/")}'
+
+    def get_can_download(self, obj):
+        from .public import can_download_public_pdf
+        if not hasattr(self, '_downloadable'):
+            self._downloadable = {}
+        if obj.pk not in self._downloadable:
+            self._downloadable[obj.pk] = can_download_public_pdf(obj)
+        return self._downloadable[obj.pk]
+
     def get_download_url(self, obj):
+        if not self.get_can_download(obj):
+            return None
         return f'{settings.FRONTEND_URL.rstrip("/")}/api/public/certificates/download/{obj.download_token}/'
 
     def get_verify_url(self, obj):

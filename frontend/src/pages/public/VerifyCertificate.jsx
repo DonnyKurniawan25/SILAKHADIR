@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { ShieldCheck, ShieldAlert, Loader2 } from 'lucide-react'
-import { verifyCertificate } from '../../api/certificateApi'
+import { verifyPublicCertificate } from '../../api/publicCertificateApi'
+import { formatCertificateDates } from '../../api/publicCertificateHelpers.mjs'
 import { useBranding } from '../../context/BrandingContext'
 
 export default function VerifyCertificate() {
@@ -9,11 +10,18 @@ export default function VerifyCertificate() {
   const { setting } = useBranding()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   useEffect(() => {
-    verifyCertificate(token)
-      .then((r) => setData(r.data))
-      .finally(() => setLoading(false))
+    let active = true
+    setLoading(true)
+    setData(null)
+    setError('')
+    verifyPublicCertificate(token)
+      .then((r) => { if (active) setData(r.data) })
+      .catch(() => { if (active) setError('Pemeriksaan gagal. Periksa koneksi Anda dan muat ulang halaman ini.') })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
   }, [token])
 
   if (loading) {
@@ -24,9 +32,16 @@ export default function VerifyCertificate() {
     )
   }
 
-  const isValid = data?.valid
-  const hasCertificate = Boolean(data?.certificate_number)
-  const isProcessing = hasCertificate && !isValid
+  if (error) return <div className="max-w-3xl mx-auto px-4 py-10"><p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-rose-800">{error}</p></div>
+
+  return <CertificateVerificationResult data={data} setting={setting} />
+}
+
+export function CertificateVerificationResult({ data, setting }) {
+  const isValid = data?.valid === true
+  const hasCertificate = Boolean(data?.event_title || data?.certificate_number)
+  const isRevoked = data?.status === 'dicabut' || data?.status === 'revoked'
+  const isProcessing = hasCertificate && !isValid && !isRevoked
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
@@ -64,12 +79,12 @@ export default function VerifyCertificate() {
               : <ShieldAlert className="w-6 h-6 flex-shrink-0" />}
             <div>
               <h1 className="font-serif font-bold text-xl text-ink-900">
-                {isValid ? 'Sertifikat Terverifikasi' : hasCertificate ? 'Sertifikat Menunggu Pengesahan' : 'Sertifikat Tidak Ditemukan'}
+                {isValid ? 'Sertifikat Terverifikasi' : isRevoked ? 'Sertifikat Telah Dicabut' : hasCertificate ? 'Sertifikat Menunggu Pengesahan' : 'Sertifikat Tidak Ditemukan'}
               </h1>
               <p className="text-sm text-ink-700">
                 {isValid
                   ? 'Dokumen tercatat final di sistem; gambar QR/tanda tangan bukan tanda tangan elektronik tersertifikasi.'
-                  : (hasCertificate ? 'Pratinjau belum sah sampai nomor dan barcode tanda tangan dilengkapi admin.' : data?.message || 'Sertifikat tidak terdaftar atau telah dicabut.')}
+                  : (isRevoked ? 'Sertifikat telah dicabut oleh penyelenggara dan tidak berlaku.' : hasCertificate ? 'Sertifikat belum disahkan oleh penyelenggara. Ketersediaan PDF tidak berarti sertifikat telah terverifikasi.' : data?.message || 'Sertifikat tidak terdaftar atau telah dicabut.')}
               </p>
             </div>
           </div>
@@ -87,9 +102,7 @@ export default function VerifyCertificate() {
               />
               <Row
                 label="Tanggal Kegiatan"
-                value={`${new Date(data.event_start).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })}${
-                  data.event_end ? ' s.d. ' + new Date(data.event_end).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }) : ''
-                }`}
+                value={formatCertificateDates(data.event_start, data.event_end)}
                 span={3}
               />
             </dl>
@@ -97,7 +110,7 @@ export default function VerifyCertificate() {
         </div>
 
         <div className="bg-slate-50 border-t border-slate-200 px-6 py-3 text-[11px] text-ink-500">
-          Halaman ini dihasilkan otomatis oleh sistem. Keabsahan sertifikat diverifikasi secara elektronik.
+          Halaman ini menampilkan status pencatatan sertifikat dalam sistem, bukan validasi tanda tangan elektronik tersertifikasi.
         </div>
       </div>
     </div>

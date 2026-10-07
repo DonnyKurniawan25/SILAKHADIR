@@ -4,6 +4,14 @@ export const listEvents = (params) => api.get('/events/', { params })
 export const getEvent = (id) => api.get(`/events/${id}/`)
 export const createEvent = (data) => api.post('/events/', data)
 export const updateEvent = (id, data) => api.put(`/events/${id}/`, data)
+export const uploadEventThumbnail = (id, file) => {
+  const data = new FormData()
+  data.append('thumbnail', file)
+  return api.post(`/events/${id}/thumbnail/`, data, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
 export const deleteEvent = (id) => api.delete(`/events/${id}/`)
 export const getAttendanceLink = (id) => api.get(`/events/${id}/attendance-link/`)
 export const closeEvent = (id) => api.post(`/events/${id}/close/`)

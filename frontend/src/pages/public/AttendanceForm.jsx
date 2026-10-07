@@ -78,7 +78,7 @@ export default function AttendanceForm() {
         captcha_token: captcha.token,
         captcha_answer: captcha.answer,
       })
-      navigate(`/absensi/${slug}/sukses`, { state: { event_title: event?.title, name: data.full_name, nik: data.nik } })
+      navigate(`/absensi/${slug}/sukses`, { state: { event_title: event?.title, name: data.full_name, nik: data.nik, nip: data.is_asn ? data.nip : '' } })
     } catch (e) {
       captchaRef.current?.refresh()
       const resp = e?.response?.data || {}

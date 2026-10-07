@@ -18,6 +18,7 @@ class Event(models.Model):
     title = models.CharField(max_length=255)
     theme = models.CharField(max_length=255, blank=True)
     description = models.TextField(blank=True)
+    thumbnail = models.ImageField(upload_to='events/thumbnails/', blank=True, null=True)
 
     start_date = models.DateTimeField()
     end_date = models.DateTimeField()
@@ -55,6 +56,10 @@ class Event(models.Model):
 
     def __str__(self):
         return self.title
+
+    @property
+    def thumbnail_url(self):
+        return self.thumbnail.url if self.thumbnail else None
 
     def save(self, *args, **kwargs):
         if not self.public_slug:

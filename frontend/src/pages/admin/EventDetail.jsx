@@ -19,7 +19,8 @@ import {
   verifyEventCertificate, cancelEventCertificateVerification,
   verifyAllEventCertificates, cancelAllEventCertificateVerifications, certificateStatus, certificateVerificationError,
 } from '../../api/certificateVerificationApi'
-import { closeEvent, finishEvent, getEvent, getAttendanceLink } from '../../api/eventApi'
+import { useAuth } from '../../context/AuthContext'
+import { closeEvent, finishEvent, getEvent, getAttendanceLink, uploadEventThumbnail } from '../../api/eventApi'
 import {
   listEventCertificates, configureEventCertificate,
   getEventCertificateConfig, suggestEventCertificateLayout,
@@ -27,6 +28,13 @@ import {
 
 export default function EventDetail() {
   const { id } = useParams()
+  const { user } = useAuth()
+  const canUploadThumbnail = ['admin', 'superadmin'].includes(user?.role)
+  const thumbnailInput = useRef(null)
+  const thumbnailLock = useRef(false)
+  const [thumbnailBusy, setThumbnailBusy] = useState(false)
+  const [thumbnailError, setThumbnailError] = useState('')
+  const [thumbnailSuccess, setThumbnailSuccess] = useState('')
   const [event, setEvent] = useState(null)
   const [link, setLink] = useState(null)
   const [copied, setCopied] = useState(false)
@@ -46,6 +54,32 @@ export default function EventDetail() {
   }
 
   useEffect(() => { loadEvent() }, [id])
+
+  const handleThumbnailUpload = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || thumbnailLock.current) return
+    setThumbnailError(''); setThumbnailSuccess('')
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setThumbnailError('Pilih foto PNG, JPEG, atau WebP. SVG tidak diizinkan.'); return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setThumbnailError('Ukuran foto maksimal 5 MB.'); return
+    }
+    thumbnailLock.current = true
+    setThumbnailBusy(true)
+    try {
+      const response = await uploadEventThumbnail(id, file)
+      setEvent(response.data)
+      setThumbnailSuccess('Foto thumbnail kegiatan berhasil disimpan.')
+    } catch (err) {
+      const detail = err?.response?.data?.thumbnail || err?.response?.data?.detail
+      setThumbnailError(Array.isArray(detail) ? detail.join(' ') : detail || 'Foto gagal diunggah. Silakan coba lagi.')
+    } finally {
+      thumbnailLock.current = false
+      setThumbnailBusy(false)
+    }
+  }
 
   const handleClose = async () => {
     const { isConfirmed } = await Swal.fire({
@@ -125,6 +159,22 @@ export default function EventDetail() {
         </div>
         <div className="gov-divider" />
       </div>
+
+      <section className="border border-slate-200 rounded bg-white p-5 space-y-3" aria-label="Foto thumbnail kegiatan">
+        <div className="eyebrow">Foto Thumbnail Kegiatan (Opsional)</div>
+        {event.thumbnail_url
+          ? <img src={event.thumbnail_url} alt={`Thumbnail kegiatan ${event.title}`} className="w-full max-w-xl max-h-80 object-contain rounded border border-slate-200 bg-slate-50" />
+          : <p className="text-sm text-ink-500">Belum ada foto thumbnail. Kegiatan tetap dapat digunakan tanpa foto.</p>}
+        {canUploadThumbnail && <>
+          <input ref={thumbnailInput} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" aria-label="Pilih foto thumbnail kegiatan" disabled={thumbnailBusy} onChange={handleThumbnailUpload} />
+          <button type="button" className="btn-outline" disabled={thumbnailBusy} onClick={() => thumbnailInput.current?.click()}>
+            <Upload className="w-4 h-4" /> {thumbnailBusy ? 'Mengunggah foto...' : 'Upload Foto Thumbnail Kegiatan'}
+          </button>
+          <p className="text-xs text-ink-500">PNG, JPEG, atau WebP; maksimal 5 MB dan 4096 × 4096 piksel. Foto baru akan menggantikan foto sebelumnya.</p>
+        </>}
+        {thumbnailError && <p role="alert" className="text-sm text-red-700">{thumbnailError}</p>}
+        {thumbnailSuccess && <p role="status" className="text-sm text-green-800">{thumbnailSuccess}</p>}
+      </section>
 
       {/* QR Absensi */}
       {link?.qr_image_url && event.status === 'open' && event.attendance_open && (
