@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import Swal from 'sweetalert2'
 import ModalForm from '../../components/ModalForm'
 import PdfPreviewModal from './PdfPreviewModal'
+import CertificateParticipantSelect from '../../components/CertificateParticipantSelect'
 import { previewFinalCertificates, applyFinalCertificates } from '../../api/finalImportApi'
 import { parsePageGroups, validateFiles, validateAssignments, importError } from '../../utils/importWorkflow.mjs'
+import { initializeCertificateReview, updateCertificateReview, canVerifyCertificateRow, verifyCertificateRow, verifyAllCertificates, certificateReviewError, certificateAssignments } from '../../utils/certificateReview.mjs'
 
-const MATCH_LABELS = { matched: 'Cocok otomatis', exact: 'Cocok persis', ready: 'Siap ditinjau', unmatched: 'Belum cocok', ambiguous: 'Nama ambigu', duplicate: 'Peserta duplikat', manual: 'Periksa manual' }
+const MATCH_LABELS = { matched: 'Cocok otomatis', exact: 'Cocok persis', ready: 'Siap ditinjau', unmatched: 'Belum cocok', ambiguous: 'Nama ambigu', duplicate: 'Peserta duplikat', manual: 'Periksa manual', needs_review: 'Perlu verifikasi' }
 
 export default function BulkUploadModal({ open, onClose, eventId, onUploaded, single = false }) {
   const [files, setFiles] = useState([])
@@ -16,13 +18,13 @@ export default function BulkUploadModal({ open, onClose, eventId, onUploaded, si
   const [batch, setBatch] = useState(null)
   const [items, setItems] = useState([])
   const [replaceExisting, setReplaceExisting] = useState(false)
-  const [reviewed, setReviewed] = useState(false)
+
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [previewUrl, setPreviewUrl] = useState('')
   const requestVersion = useRef(0)
 
-  const invalidate = () => { requestVersion.current += 1; setBatch(null); setItems([]); setReviewed(false); setReplaceExisting(false); setError(''); setPreviewUrl('') }
+  const invalidate = () => { requestVersion.current += 1; setBatch(null); setItems([]); setReplaceExisting(false); setError(''); setPreviewUrl('') }
   useEffect(() => {
     if (open) {
       setFiles([]); setMode(single ? 'separate' : 'combined'); setPages(1); setCustom(false); setRanges(''); invalidate()
@@ -59,21 +61,22 @@ export default function BulkUploadModal({ open, onClose, eventId, onUploaded, si
       const { data } = await previewFinalCertificates(eventId, { files, mode, pagesPerParticipant: mode === 'separate' || custom ? 1 : Number(pages), pageGroups })
       if (version !== requestVersion.current) return
       if (!data.batch_id || !Array.isArray(data.items) || !Array.isArray(data.participants)) throw new Error('Respons pratinjau tidak lengkap. Coba kembali.')
-      const allowed = new Set(data.participants.map((p) => String(p.id)))
       setBatch(data)
-      setItems(data.items.map((item) => ({ ...item, participant_id: allowed.has(String(item.participant_id)) ? item.participant_id : '', certificate_number: String(item.certificate_number || '') })))
+      setItems(initializeCertificateReview(data.items, data.participants))
     } catch (err) { if (version === requestVersion.current) setError(importError(err, err.message || 'Gagal membuat pratinjau PDF.')) }
     finally { if (version === requestVersion.current) setBusy('') }
   }
 
   const mappingError = batch ? validateAssignments(items, batch.participants) : ''
+  const reviewError = batch ? certificateReviewError(items, batch.participants) : ''
   const assigned = items.filter((item) => item.participant_id !== '' && item.participant_id != null)
+  const verifiedCount = assigned.filter((item) => item.verified).length
   const updateItem = (id, field, value) => {
-    setItems((current) => current.map((item) => item.id === id ? { ...item, [field]: value } : item))
-    setReviewed(false); setError('')
+    setItems((current) => updateCertificateReview(current, id, field, value))
+    setError('')
   }
   const apply = async () => {
-    if (!batch || busy || !reviewed || mappingError) return
+    if (!batch || busy || reviewError) return
     setBusy('confirm')
     const version = requestVersion.current
     try {
@@ -86,7 +89,7 @@ export default function BulkUploadModal({ open, onClose, eventId, onUploaded, si
       setBusy('apply'); setError('')
       await applyFinalCertificates(eventId, {
         batch_id: batch.batch_id,
-        assignments: assigned.map((item) => ({ item_id: item.id, participant_id: item.participant_id, certificate_number: item.certificate_number.trim() })),
+        assignments: certificateAssignments(items, batch.participants),
         replace_existing: replaceExisting,
       })
       if (version !== requestVersion.current) return
@@ -120,23 +123,27 @@ export default function BulkUploadModal({ open, onClose, eventId, onUploaded, si
           <h4 className="font-semibold">2. Tinjau dan koreksi pemetaan ({items.length} berkas)</h4>
           <p className="text-sm text-ink-500">Hanya peserta hadir dari server tersedia di pilihan. Nama hasil deteksi bukan bukti pasti; periksa PDF dan identitas peserta. Pilih “Lewati” untuk berkas yang tidak cocok. Nomor bersifat metadata opsional, tidak dicetak ke PDF.</p>
           {!batch.participants.length && <p role="alert" className="text-amber-700">Belum ada peserta hadir untuk dipetakan. Unggah absensi dahulu, kemudian buat pratinjau ulang.</p>}
-          <div className="overflow-x-auto max-h-[45vh] overflow-y-auto border rounded"><table className="table-base"><thead><tr><th>Berkas / halaman</th><th>Nama terdeteksi / kecocokan</th><th>Peserta hadir</th><th>Nomor (opsional)</th><th>PDF</th></tr></thead><tbody>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="btn-outline" disabled={Boolean(busy) || Boolean(mappingError)} onClick={() => setItems((current) => verifyAllCertificates(current, batch.participants, true))}>Verifikasi SEMUA</button>
+            <button type="button" className="btn-outline" disabled={Boolean(busy) || !verifiedCount} onClick={() => setItems((current) => verifyAllCertificates(current, batch.participants, false))}>Batalkan SEMUA verifikasi</button>
+            <span className="text-sm" role="status">Terverifikasi: {verifiedCount} dari {assigned.length} berkas dipilih.</span>
+          </div>
+          <p className="text-xs text-ink-500">Verifikasi menyatakan PDF dan identitas sudah diperiksa. Batalkan verifikasi untuk meninjau ulang; perubahan peserta atau nomor membatalkan verifikasi baris tersebut.</p>
+          <div className="overflow-x-auto max-h-[45vh] overflow-y-auto border rounded"><table className="table-base"><thead><tr><th>Berkas / halaman</th><th>Nama terdeteksi / kecocokan</th><th>Peserta hadir</th><th>Nomor (opsional)</th><th>PDF</th><th>Verifikasi</th></tr></thead><tbody>
             {items.map((item) => <tr key={item.id}>
               <td><div className="text-sm break-all">{item.filename}</div><div className="text-xs text-ink-500">Halaman {item.page_start ?? '-'}–{item.page_end ?? '-'} ({item.page_count ?? '-'} halaman)</div></td>
               <td><div>{item.detected_name || 'Nama tidak terdeteksi'}</div><span className="text-xs text-ink-500">{MATCH_LABELS[item.match_status] || 'Periksa hasil pencocokan'}</span>{item.participant_name && <div className="text-xs">Saran: {item.participant_name}</div>}</td>
-              <td><select aria-label={`Peserta untuk ${item.filename}, halaman ${item.page_start}`} disabled={Boolean(busy)} className="input min-w-[240px]" value={item.participant_id} onChange={(e) => updateItem(item.id, 'participant_id', e.target.value)}>
-                <option value="">Lewati — tanpa peserta</option>
-                {batch.participants.map((p) => <option key={p.id} value={p.id}>{p.full_name} · NIK {p.nik || '-'}{p.nip ? ` · NIP ${p.nip}` : ''}</option>)}
-              </select></td>
+              <td><CertificateParticipantSelect label={`Peserta untuk ${item.filename}, halaman ${item.page_start}`} participants={batch.participants} disabled={Boolean(busy)} value={item.participant_id} onChange={(value) => updateItem(item.id, 'participant_id', value)} /></td>
               <td><input aria-label={`Nomor sertifikat ${item.filename}`} disabled={Boolean(busy)} className="input min-w-[170px]" value={item.certificate_number} onChange={(e) => updateItem(item.id, 'certificate_number', e.target.value)} placeholder="Boleh kosong" /></td>
               <td>{item.preview_url ? <button type="button" disabled={Boolean(busy)} className="btn-outline" onClick={() => setPreviewUrl(item.preview_url)}>Lihat PDF</button> : <span className="text-xs text-ink-500">Tidak tersedia</span>}</td>
+              <td><div className="space-y-1"><span className={`block text-xs ${item.verified ? 'text-green-700' : 'text-ink-500'}`}>{item.verified ? 'Terverifikasi' : item.participant_id === '' ? 'Dilewati' : 'Belum diverifikasi'}</span><button type="button" aria-label={`${item.verified ? 'Batalkan verifikasi' : 'Verifikasi'} ${item.filename}, halaman ${item.page_start}`} className="btn-outline whitespace-nowrap" disabled={Boolean(busy) || (!item.verified && !canVerifyCertificateRow(items, item, batch.participants))} onClick={() => setItems((current) => verifyCertificateRow(current, item.id, batch.participants, !item.verified))}>{item.verified ? 'Batalkan verifikasi' : 'Verifikasi'}</button></div></td>
             </tr>)}
           </tbody></table></div>
           {mappingError && <p role="alert" className="text-amber-700 text-sm">{mappingError}</p>}
           <p className="text-sm">Akan diterapkan: <strong>{assigned.length}</strong>. Dilewati: <strong>{items.length - assigned.length}</strong>.</p>
-          <label className="flex items-start gap-2 p-3 border border-amber-300 bg-amber-50 rounded text-sm"><input type="checkbox" disabled={Boolean(busy)} checked={replaceExisting} onChange={(e) => { setReplaceExisting(e.target.checked); setReviewed(false) }} /><span><strong>Ganti sertifikat yang sudah ada.</strong> Peringatan: PDF lama peserta yang dipilih akan diganti. Biarkan tidak dicentang untuk melindungi sertifikat lama.</span></label>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" disabled={Boolean(busy) || Boolean(mappingError)} checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} /> Saya sudah memeriksa PDF, rentang halaman, dan identitas semua peserta yang dipilih.</label>
-          <button type="button" onClick={apply} disabled={Boolean(busy) || !reviewed || Boolean(mappingError)} className="btn-primary">{busy === 'apply' ? 'Menerapkan...' : '3. Konfirmasi dan terapkan pemetaan'}</button>
+          <label className="flex items-start gap-2 p-3 border border-amber-300 bg-amber-50 rounded text-sm"><input type="checkbox" disabled={Boolean(busy)} checked={replaceExisting} onChange={(e) => { setReplaceExisting(e.target.checked); setItems((current) => verifyAllCertificates(current, batch.participants, false)) }} /><span><strong>Ganti sertifikat yang sudah ada.</strong> Peringatan: PDF lama peserta yang dipilih akan diganti. Biarkan tidak dicentang untuk melindungi sertifikat lama.</span></label>
+          {!mappingError && reviewError && <p role="alert" className="text-amber-700 text-sm">{reviewError}</p>}
+          <button type="button" onClick={apply} disabled={Boolean(busy) || Boolean(reviewError)} className="btn-primary">{busy === 'apply' ? 'Menerapkan...' : '3. Konfirmasi dan terapkan pemetaan'}</button>
         </section>}
       </div>
     </ModalForm>

@@ -15,6 +15,10 @@ import PdfPreviewModal from './PdfPreviewModal'
 import { getAuthenticatedPdf } from '../../api/finalImportApi'
 import { importError } from '../../utils/importWorkflow.mjs'
 import EventReportTab from './EventReportTab'
+import {
+  verifyEventCertificate, cancelEventCertificateVerification,
+  verifyAllEventCertificates, cancelAllEventCertificateVerifications, certificateStatus, certificateVerificationError,
+} from '../../api/certificateVerificationApi'
 import { closeEvent, finishEvent, getEvent, getAttendanceLink } from '../../api/eventApi'
 import {
   listEventCertificates, configureEventCertificate,
@@ -34,9 +38,11 @@ export default function EventDetail() {
 
   const loadEvent = () => {
     setRefreshVersion((value) => value + 1)
-    getEvent(id).then((r) => setEvent(r.data))
-    getAttendanceLink(id).then((r) => setLink(r.data))
-    listEventCertificates(id).then((r) => setCerts(r.data.results || r.data))
+    return Promise.all([
+      getEvent(id).then((r) => setEvent(r.data)),
+      getAttendanceLink(id).then((r) => setLink(r.data)),
+      listEventCertificates(id).then((r) => setCerts(r.data.results || r.data)),
+    ])
   }
 
   useEffect(() => { loadEvent() }, [id])
@@ -242,11 +248,41 @@ function CertTab({ eventId, certs, onRefresh, onImport }) {
   const [pdfPreview, setPdfPreview] = useState('')
   const [downloading, setDownloading] = useState(null)
   const [legacyOpen, setLegacyOpen] = useState(false)
+  const [verificationBusy, setVerificationBusy] = useState(false)
+  const [verificationError, setVerificationError] = useState('')
+  const [verificationSuccess, setVerificationSuccess] = useState('')
+  const verificationLock = useRef(false)
+  const handleVerification = async (cancel, cert = null) => {
+    if (verificationLock.current) return
+    verificationLock.current = true
+    setVerificationBusy(true)
+    setVerificationError(''); setVerificationSuccess('')
+    let persisted = false
+    try {
+      if (!cert || cancel) {
+        const { isConfirmed } = await Swal.fire({
+          icon: 'question', title: `${cancel ? 'Batalkan verifikasi' : 'Verifikasi'} ${cert ? 'sertifikat ini' : 'semua sertifikat kegiatan'}?`,
+          text: cancel ? 'PDF tetap disimpan. Status kembali Diproses dan PDF dapat diimpor ulang atau diganti.' : 'Semua sertifikat kegiatan, termasuk yang tidak tampil di halaman ini, harus memiliki PDF dan peserta hadir. Jika satu tidak memenuhi syarat, tidak ada perubahan.',
+          showCancelButton: true, confirmButtonText: cancel ? 'Ya, batalkan verifikasi' : 'Ya, verifikasi semua', cancelButtonText: 'Kembali',
+        })
+        if (!isConfirmed) return
+      }
+      const action = cert
+        ? (cancel ? cancelEventCertificateVerification : verifyEventCertificate)
+        : (cancel ? cancelAllEventCertificateVerifications : verifyAllEventCertificates)
+      const response = await action(eventId, cert?.id)
+      persisted = true
+      await onRefresh()
+      setVerificationSuccess(`${response.data.updated} sertifikat berhasil ${cancel ? 'dibatalkan verifikasinya. PDF tetap tersimpan dan dapat diganti melalui impor ulang.' : 'diverifikasi.'}`)
+    } catch (err) {
+      setVerificationError(persisted ? 'Perubahan berhasil disimpan, tetapi daftar gagal dimuat ulang. Muat ulang halaman untuk melihat status terbaru.' : certificateVerificationError(err))
+    } finally { verificationLock.current = false; setVerificationBusy(false) }
+  }
   const handleDownload = async (cert) => {
     setDownloading(cert.id)
     let url = ''
     try {
-      url = await getAuthenticatedPdf(cert.download_url || cert.pdf_url)
+      url = await getAuthenticatedPdf(certificateStatus(cert).verified ? cert.download_url || cert.pdf_url : cert.pdf_url)
       const anchor = document.createElement('a')
       anchor.href = url; anchor.download = `sertifikat-${cert.id}.pdf`
       document.body.appendChild(anchor); anchor.click(); anchor.remove()
@@ -261,8 +297,31 @@ function CertTab({ eventId, certs, onRefresh, onImport }) {
       <button type="button" onClick={onImport} className="btn-primary"><UploadCloud className="w-4 h-4" /> Impor dan tinjau PDF final</button>
       <p className="text-xs text-ink-500">Untuk mengganti PDF, impor kembali dan pilih “Ganti sertifikat yang sudah ada” setelah memeriksa peserta.</p>
     </section>
+    <div className="flex flex-wrap gap-2">
+      <button type="button" disabled={verificationBusy || !certs.length} onClick={() => handleVerification(false)} className="btn-primary">Verifikasi semua</button>
+      <button type="button" disabled={verificationBusy || !certs.length} onClick={() => handleVerification(true)} className="btn-outline">Batalkan verifikasi semua</button>
+      {verificationBusy && <span role="status" className="text-sm text-ink-500">Memproses verifikasi...</span>}
+    </div>
+    {verificationError && <p role="alert" className="text-sm text-red-700 bg-red-50 rounded p-3">{verificationError}</p>}
+    {verificationSuccess && <p role="status" className="text-sm text-green-800 bg-green-50 rounded p-3">{verificationSuccess}</p>}
     {!certs.length ? <div className="card text-center text-ink-500">Belum ada sertifikat.</div> : <div className="card p-0 overflow-x-auto"><table className="table-base"><thead><tr><th>Nomor (metadata)</th><th>Nama peserta</th><th>Status</th><th>Tindakan</th></tr></thead><tbody>
-      {certs.map((cert) => <tr key={cert.id}><td className="font-mono text-xs">{cert.certificate_number || '-'}</td><td className="font-semibold">{cert.participant_name}</td><td><span className={cert.status === 'available' ? 'badge-green' : 'badge-yellow'}>{cert.status === 'available' ? 'Tersedia' : cert.status === 'failed' ? 'Gagal' : 'Memproses'}</span></td><td>{cert.pdf_url && <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setPdfPreview(cert.pdf_url)} className="btn-outline !py-1.5 text-xs">Pratinjau PDF</button><button type="button" disabled={downloading !== null} onClick={() => handleDownload(cert)} className="btn-primary !py-1.5 text-xs">{downloading === cert.id ? 'Mengunduh...' : 'Unduh PDF'}</button></div>}</td></tr>)}
+      {certs.map((cert) => {
+        const status = certificateStatus(cert)
+        return <tr key={cert.id}>
+          <td className="font-mono text-xs">{cert.certificate_number || '-'}</td>
+          <td className="font-semibold">{cert.participant_name}</td>
+          <td><span className={status.badge}>{status.label}</span></td>
+          <td><div className="flex flex-wrap gap-2">
+            {cert.pdf_url && <>
+              <button type="button" onClick={() => setPdfPreview(cert.pdf_url)} className="btn-outline !py-1.5 text-xs">Pratinjau PDF</button>
+              <button type="button" disabled={downloading !== null} onClick={() => handleDownload(cert)} className="btn-primary !py-1.5 text-xs">{downloading === cert.id ? 'Mengunduh...' : status.verified ? 'Unduh PDF' : 'Unduh pratinjau'}</button>
+            </>}
+            {status.canVerify && <button type="button" disabled={verificationBusy} onClick={() => handleVerification(false, cert)} className="btn-primary !py-1.5 text-xs">Verifikasi sertifikat</button>}
+            {status.verified && <button type="button" disabled={verificationBusy} onClick={() => handleVerification(true, cert)} className="btn-outline !py-1.5 text-xs">Batalkan verifikasi</button>}
+            {!status.verified && <button type="button" disabled={verificationBusy} onClick={onImport} className="btn-outline !py-1.5 text-xs">{cert.pdf_url ? 'Ganti PDF melalui impor' : 'Unggah PDF melalui impor'}</button>}
+          </div></td>
+        </tr>
+      })}
     </tbody></table></div>}
     <details className="border rounded p-4" onToggle={(e) => setLegacyOpen(e.currentTarget.open)}>
       <summary className="cursor-pointer text-sm text-ink-500">Editor lama berbasis template (opsional, bukan alur PDF final)</summary>

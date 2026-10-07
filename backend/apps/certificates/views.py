@@ -128,6 +128,102 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
             event_id=self.kwargs['event_id']
         ).select_related('participant', 'event', 'number_format')
 
+    def _set_verification_status(self, request, event_id, target_status, pk=None):
+        """Validate the complete event-scoped selection before changing any row."""
+        import uuid
+        from collections.abc import Mapping
+        from django.db import transaction
+        from django.utils import timezone
+        from rest_framework.exceptions import ValidationError
+        from apps.attendance.models import Attendance
+
+        if not isinstance(request.data, Mapping):
+            raise ValidationError({'detail': 'Body harus berupa objek JSON.'})
+        ids = None
+        if pk is not None:
+            try:
+                pk = uuid.UUID(str(pk))
+            except (ValueError, TypeError, AttributeError):
+                raise Http404
+        if pk is None and 'ids' in request.data:
+            raw_ids = request.data['ids']
+            if not isinstance(raw_ids, list) or not raw_ids:
+                raise ValidationError({'ids': 'ids harus berupa daftar UUID yang tidak kosong.'})
+            try:
+                if any(not isinstance(value, str) for value in raw_ids):
+                    raise ValueError
+                ids = [uuid.UUID(value) for value in raw_ids]
+            except (ValueError, TypeError, AttributeError):
+                raise ValidationError({'ids': 'Setiap ID harus berupa UUID sertifikat yang valid.'})
+            if len(set(ids)) != len(ids):
+                raise ValidationError({'ids': 'ID sertifikat tidak boleh duplikat.'})
+
+        with transaction.atomic():
+            get_object_or_404(Event, pk=event_id)
+            # Do not apply list filters/pagination to an ALL action. Lock in a
+            # stable order, and avoid nullable joins in SELECT FOR UPDATE.
+            queryset = Certificate.objects.filter(event_id=event_id).order_by('pk').select_for_update()
+            if pk is not None:
+                certificates = [get_object_or_404(queryset, pk=pk)]
+            else:
+                if ids is not None:
+                    queryset = queryset.filter(pk__in=ids)
+                certificates = list(queryset)
+                if ids is not None and len(certificates) != len(ids):
+                    raise ValidationError({'ids': 'Sertifikat tidak ditemukan dalam kegiatan ini.'})
+
+            if target_status == Certificate.Status.AVAILABLE:
+                attendances = list(Attendance.objects.select_for_update().filter(
+                    event_id=event_id,
+                    participant_id__in=[cert.participant_id for cert in certificates],
+                ).order_by('pk'))
+                present_ids = {att.participant_id for att in attendances if att.status == Attendance.Status.HADIR}
+                errors = []
+                for cert in certificates:
+                    reasons = []
+                    if cert.participant_id not in present_ids:
+                        reasons.append('Peserta harus berstatus hadir pada kegiatan ini.')
+                    try:
+                        pdf_exists = bool(cert.pdf_file and cert.pdf_file.storage.exists(cert.pdf_file.name))
+                    except Exception:
+                        pdf_exists = False
+                    if not pdf_exists:
+                        reasons.append('File PDF sertifikat tidak ditemukan atau tidak dapat diakses.')
+                    if reasons:
+                        errors.append({'id': str(cert.pk), 'errors': reasons})
+                if errors:
+                    raise ValidationError({'detail': 'Verifikasi dibatalkan; tidak ada status yang diubah.', 'errors': errors})
+
+            updated_at = timezone.now()
+            if certificates:
+                Certificate.objects.filter(pk__in=[cert.pk for cert in certificates]).update(
+                    status=target_status, updated_at=updated_at,
+                )
+            for cert in certificates:
+                cert.status = target_status
+                cert.updated_at = updated_at
+            return Response({
+                'updated': len(certificates),
+                'status': target_status,
+                'certificates': self.get_serializer(certificates, many=True).data,
+            })
+
+    @action(detail=True, methods=['post'], url_path='verify', parser_classes=[JSONParser])
+    def verify(self, request, event_id=None, pk=None):
+        return self._set_verification_status(request, event_id, Certificate.Status.AVAILABLE, pk=pk)
+
+    @action(detail=True, methods=['post'], url_path='cancel-verification', parser_classes=[JSONParser])
+    def cancel_verification(self, request, event_id=None, pk=None):
+        return self._set_verification_status(request, event_id, Certificate.Status.PROCESSING, pk=pk)
+
+    @action(detail=False, methods=['post'], url_path='verify-all', parser_classes=[JSONParser])
+    def verify_all(self, request, event_id=None):
+        return self._set_verification_status(request, event_id, Certificate.Status.AVAILABLE)
+
+    @action(detail=False, methods=['post'], url_path='cancel-verification-all', parser_classes=[JSONParser])
+    def cancel_verification_all(self, request, event_id=None):
+        return self._set_verification_status(request, event_id, Certificate.Status.PROCESSING)
+
     @action(detail=False, methods=['post'], url_path='import-preview')
     def import_preview(self, request, event_id=None):
         from .imports import create_preview
