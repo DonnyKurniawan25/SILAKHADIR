@@ -12,6 +12,7 @@ import ParticipantList from './ParticipantList'
 import UploadCertificateModal from './UploadCertificateModal'
 import BulkUploadModal from './BulkUploadModal'
 import PdfPreviewModal from './PdfPreviewModal'
+import DataTable from '../../components/DataTable'
 import CertificateNumberEditor from '../../components/CertificateNumberEditor'
 import CertificateCompressionControls from '../../components/CertificateCompressionControls'
 import { getAuthenticatedPdf } from '../../api/finalImportApi'
@@ -341,6 +342,49 @@ function CertTab({ eventId, certs, onRefresh, onImport, canManageNumbers = false
     } catch (err) { Swal.fire({ icon: 'error', title: 'Unduh PDF gagal', text: importError(err, err.message || 'Berkas tidak dapat diunduh.') }) }
     finally { setDownloading(null); if (url) setTimeout(() => URL.revokeObjectURL(url), 1000) }
   }
+
+  const columns = [
+    {
+      key: 'certificate_number',
+      title: 'Nomor (metadata)',
+      className: 'font-mono text-xs',
+      render: (cert) => cert.certificate_number || '-',
+      searchValue: (cert) => cert.certificate_number || '',
+    },
+    {
+      key: 'participant_name',
+      title: 'Nama peserta',
+      className: 'font-semibold',
+      render: (cert) => cert.participant_name,
+      searchValue: (cert) => [cert.participant_name, cert.nik, cert.nip].filter(Boolean).join(' '),
+    },
+    {
+      key: 'status',
+      title: 'Status',
+      render: (cert) => {
+        const status = certificateStatus(cert)
+        return <span className={status.badge}>{status.label}</span>
+      },
+      searchValue: (cert) => certificateStatus(cert).label,
+    },
+    {
+      key: 'actions',
+      title: 'Tindakan',
+      render: (cert) => {
+        const status = certificateStatus(cert)
+        return <div className="flex flex-wrap gap-2">
+          {cert.pdf_url && <>
+            <button type="button" onClick={() => setPdfPreview(cert.pdf_url)} className="btn-outline !py-1.5 text-xs">Pratinjau PDF</button>
+            <button type="button" disabled={downloading !== null} onClick={() => handleDownload(cert)} className="btn-primary !py-1.5 text-xs">{downloading === cert.id ? 'Mengunduh...' : status.verified ? 'Unduh PDF' : 'Unduh pratinjau'}</button>
+          </>}
+          {status.canVerify && <button type="button" disabled={verificationBusy} onClick={() => handleVerification(false, cert)} className="btn-primary !py-1.5 text-xs">Verifikasi sertifikat</button>}
+          {status.verified && <button type="button" disabled={verificationBusy} onClick={() => handleVerification(true, cert)} className="btn-outline !py-1.5 text-xs">Batalkan verifikasi</button>}
+          {!status.verified && <button type="button" disabled={verificationBusy} onClick={onImport} className="btn-outline !py-1.5 text-xs">{cert.pdf_url ? 'Ganti PDF melalui impor' : 'Unggah PDF melalui impor'}</button>}
+        </div>
+      },
+    },
+  ]
+
   return <div className="space-y-4">
     <section className="card space-y-3">
       <div className="eyebrow">Sertifikat PDF final</div>
@@ -358,25 +402,12 @@ function CertTab({ eventId, certs, onRefresh, onImport, canManageNumbers = false
     </div>
     {verificationError && <p role="alert" className="text-sm text-red-700 bg-red-50 rounded p-3">{verificationError}</p>}
     {verificationSuccess && <p role="status" className="text-sm text-green-800 bg-green-50 rounded p-3">{verificationSuccess}</p>}
-    {!certs.length ? <div className="card text-center text-ink-500">Belum ada sertifikat.</div> : <div className="card p-0 overflow-x-auto"><table className="table-base"><thead><tr><th>Nomor (metadata)</th><th>Nama peserta</th><th>Status</th><th>Tindakan</th></tr></thead><tbody>
-      {certs.map((cert) => {
-        const status = certificateStatus(cert)
-        return <tr key={cert.id}>
-          <td className="font-mono text-xs">{cert.certificate_number || '-'}</td>
-          <td className="font-semibold">{cert.participant_name}</td>
-          <td><span className={status.badge}>{status.label}</span></td>
-          <td><div className="flex flex-wrap gap-2">
-            {cert.pdf_url && <>
-              <button type="button" onClick={() => setPdfPreview(cert.pdf_url)} className="btn-outline !py-1.5 text-xs">Pratinjau PDF</button>
-              <button type="button" disabled={downloading !== null} onClick={() => handleDownload(cert)} className="btn-primary !py-1.5 text-xs">{downloading === cert.id ? 'Mengunduh...' : status.verified ? 'Unduh PDF' : 'Unduh pratinjau'}</button>
-            </>}
-            {status.canVerify && <button type="button" disabled={verificationBusy} onClick={() => handleVerification(false, cert)} className="btn-primary !py-1.5 text-xs">Verifikasi sertifikat</button>}
-            {status.verified && <button type="button" disabled={verificationBusy} onClick={() => handleVerification(true, cert)} className="btn-outline !py-1.5 text-xs">Batalkan verifikasi</button>}
-            {!status.verified && <button type="button" disabled={verificationBusy} onClick={onImport} className="btn-outline !py-1.5 text-xs">{cert.pdf_url ? 'Ganti PDF melalui impor' : 'Unggah PDF melalui impor'}</button>}
-          </div></td>
-        </tr>
-      })}
-    </tbody></table></div>}
+    <DataTable
+      rows={certs}
+      columns={columns}
+      emptyText="Belum ada sertifikat."
+      defaultPageSize={10}
+    />
     <details className="border rounded p-4" onToggle={(e) => setLegacyOpen(e.currentTarget.open)}>
       <summary className="cursor-pointer text-sm text-ink-500">Editor lama berbasis template (opsional, bukan alur PDF final)</summary>
       <p className="text-sm text-amber-800 bg-amber-50 rounded p-3 my-3">Fitur lama untuk sertifikat yang dibuat dari template gambar. Jangan gunakan untuk PDF final Canva. Simpan konfigurasi lama hanya jika diperlukan; data sertifikat lama tetap ditampilkan di atas.</p>

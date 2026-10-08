@@ -47,3 +47,13 @@ test('Participant lookup auto-fill payload mapping', () => {
   assert.equal(lookupResponse.nip, '199712252020121001')
   assert.equal(lookupResponse.is_asn, true)
 })
+
+test('EventDetail CertTab integrates DataTable for pagination and search', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const source = await readFile(new URL('../pages/admin/EventDetail.jsx', import.meta.url), 'utf8')
+  assert.match(source, /import DataTable from ['"]\.\.\/\.\.\/components\/DataTable['"]/)
+  assert.match(source, /<DataTable\s+rows=\{certs\}\s+columns=\{columns\}/)
+  assert.match(source, /emptyText="Belum ada sertifikat\."/)
+  assert.match(source, /defaultPageSize=\{10\}/)
+})
+
