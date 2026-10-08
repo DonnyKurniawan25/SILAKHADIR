@@ -17,7 +17,9 @@ class NumberExtractionTests(SimpleTestCase):
         for text, expected in [('No: 001', '001'), ('No. : 12/ABC', '12/ABC'),
                                ('Nomor Sertifikat:\n123/ABC/2026', '123/ABC/2026'),
                                ('No\n:\n001-ABC', '001-ABC'),
-                               ('No: 12 / ABC / 2026', '12/ABC/2026')]:
+                               ('No: 12 / ABC / 2026', '12/ABC/2026'),
+                               ('N o :  5 0 0 . 1 2 / 6 / D I S K O M I N F O T I K / X / 2 0 2 6', '500.12/6/DISKOMINFOTIK/X/2026'),
+                               ('Jumlah JP:N o :  5 0 0 . 1 2 / 6 / D I S K O M I N F O T I K / X / 2 0 2 6', '500.12/6/DISKOMINFOTIK/X/2026')]:
             with self.subTest(text=text):
                 stream = io.BytesIO()
                 pdf = canvas.Canvas(stream)

@@ -72,15 +72,17 @@ def match_name(text, all_people, eligible_ids):
     name = normalize(person.full_name)
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     recipients = []
-    anchor = re.compile(r'(?:diberikan\s+kepada|dipersembahkan\s+kepada|presented\s+to|awarded\s+to|kepada)\s*:?\s*(.*)', re.I)
+    anchor = re.compile(r'(?:d\s*i\s*b\s*e\s*r\s*i\s*k\s*a\s*n\s+k\s*e\s*p\s*a\s*d\s*a|diberikan\s+kepada|dipersembahkan\s+kepada|presented\s+to|awarded\s+to|kepada)\s*:?\s*(.*)', re.I)
     for i, line in enumerate(lines):
-        found = anchor.fullmatch(line)
+        found = anchor.search(line)
         if found:
-            recipients.append(normalize(found.group(1) or (lines[i + 1] if i + 1 < len(lines) else '')))
+            val = found.group(1).strip()
+            recipients.append(normalize(val or (lines[i + 1] if i + 1 < len(lines) else '')))
     # Repeated name anywhere else can be a signer, even if same person/name.
     occurrences = len(re.findall(r'(?<!\w)' + re.escape(name) + r'(?!\w)', normalize(text)))
-    if recipients == [name] and occurrences == 1 and person.pk in eligible_ids:
-        return person, person.full_name, 'matched'
+    if occurrences == 1 and person.pk in eligible_ids:
+        if recipients == [name] or not recipients:
+            return person, person.full_name, 'matched'
     return None, person.full_name, 'needs_review'
 
 
@@ -177,7 +179,14 @@ def _create_preview(event, owner, files, data, temporary_files):
                     raise ValidationError('PDF bertanda tangan digital harus diunggah terpisah, bukan dipecah, agar tanda tangan tetap valid.')
             groups = [(1, count)] if mode == 'separate' else groups_for(count, data)
             for start, end in groups:
-                text = '\n'.join(reader.pages[i].extract_text() or '' for i in range(start - 1, end))
+                text_parts = []
+                for i in range(start - 1, end):
+                    try:
+                        p_txt = reader.pages[i].extract_text(extraction_mode='layout') or reader.pages[i].extract_text() or ''
+                    except Exception:
+                        p_txt = reader.pages[i].extract_text() or ''
+                    text_parts.append(p_txt)
+                text = '\n'.join(text_parts)
                 person, detected, match_status = match_name(text, people, eligible_ids)
                 if mode == 'separate':
                     result = content  # Byte-for-byte original final PDF.

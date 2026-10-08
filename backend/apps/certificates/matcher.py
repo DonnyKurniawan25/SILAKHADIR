@@ -35,9 +35,13 @@ def extract_text_from_pdf(file_obj) -> str:
     pages = []
     for page in reader.pages:
         try:
-            pages.append(page.extract_text() or '')
+            text = page.extract_text(extraction_mode='layout') or page.extract_text() or ''
         except Exception:
-            pages.append('')
+            try:
+                text = page.extract_text() or ''
+            except Exception:
+                text = ''
+        pages.append(text)
     return '\n'.join(pages)
 
 
@@ -54,10 +58,15 @@ def extract_certificate_number(text: str) -> str | None:
 
     # Only explicit labels are evidence. Never guess from dates/NIP elsewhere.
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    label = re.compile(r'^(?:nomor\b|no\b\.?)(?:[ \t]+sertifikat)?[ \t]*[:\-]?[ \t]*(.*)$', re.I)
+    label = re.compile(
+        r'(?:^|[^\w])(?:nomor\b|no\b|n\s+o\s+m\s+o\s+r|n\s+o(?=[\s:.-]))\.?'
+        r'(?:[ \t]+s\s*e\s*r\s*t\s*i\s*f\s*i\s*k\s*a\s*t)?'
+        r'[ \t]*[:\-]?[ \t]*(.*)$',
+        re.I
+    )
     candidates = set()
     for i, line in enumerate(lines):
-        match = label.fullmatch(line)
+        match = label.search(line)
         if not match:
             continue
         raw = match.group(1).strip()
@@ -66,8 +75,11 @@ def extract_certificate_number(text: str) -> str | None:
             j += 1
         if not raw and j < len(lines):
             raw = lines[j]
-        # Consume the entire value, not a plausible prefix of ambiguous text.
-        if not re.fullmatch(r'[A-Za-z0-9_]+(?:[ \t]*[/.-][ \t]*[A-Za-z0-9_]+)*', raw):
+        if not raw:
+            return None
+        if not re.fullmatch(r'[A-Za-z0-9_]+(?:[ \t]*(?:[/.-]|[A-Za-z0-9_])[ \t]*)*', raw):
+            return None
+        if any(w.lower() in ('atau', 'and', 'or', 'dan') for w in raw.split()):
             return None
         number = _cleanup_number(raw)
         if not _looks_like_number(number):

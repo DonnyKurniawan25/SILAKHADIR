@@ -238,8 +238,7 @@ def detect_number(source, budget):
             return ''
         # Object/xref streams decode during reader construction, before preflight.
         # Reject those and oversized/complex page trees before invoking pypdf.
-        if (re.search(rb'/[^\s<>\[\]()]*#[0-9a-fA-F]{2}', data) or
-                re.search(rb'/Type\s*/(?:ObjStm|XRef)\b', data) or
+        if (re.search(rb'/Type\s*/(?:ObjStm|XRef)\b', data) or
                 len(re.findall(rb'\b\d+\s+\d+\s+obj\b', data)) > 2000 or
                 len(re.findall(rb'/Type\s*/Page\b', data)) > MAX_PAGES or
                 len(re.findall(rb'/Type\s*/Pages\b', data)) > 16 or
@@ -261,7 +260,10 @@ def detect_number(source, budget):
             if time.monotonic() >= budget.deadline:
                 budget.stopped = True
                 return ''
-            text = page.extract_text() or ''
+            try:
+                text = page.extract_text(extraction_mode='layout') or page.extract_text() or ''
+            except Exception:
+                text = page.extract_text() or ''
             size += len(text)
             if size > MAX_TEXT_CHARS:
                 return ''

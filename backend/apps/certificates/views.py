@@ -286,7 +286,7 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
         """Read existing final PDFs for reviewer suggestions; never save anything."""
         from .bounded_detector import DetectionBudget, detect_number
         get_object_or_404(Event, pk=event_id)
-        budget = DetectionBudget()
+        budget = DetectionBudget(max_files=1000, max_raw=512 * 1024 * 1024, max_decoded=256 * 1024 * 1024, max_seconds=60)
         items = []
         queryset = Certificate.objects.filter(event_id=event_id).select_related('participant').order_by('pk')
         for cert in queryset.iterator():
