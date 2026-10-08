@@ -24,6 +24,11 @@ RUN apt-get update \
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
+# Explicit lossless certificate recompression; keep the pip layer cached.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends qpdf \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY . .
 RUN mkdir -p /app/media /app/staticfiles
 

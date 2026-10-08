@@ -127,6 +127,18 @@ class Certificate(models.Model):
         super().save(*args, **kwargs)
 
 
+class CertificateCompressionJob(models.Model):
+    """Frozen all-certificate selection and durable one-record progress."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event = models.ForeignKey('events.Event', on_delete=models.CASCADE)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    certificate_ids = models.JSONField(default=list)
+    results = models.JSONField(default=list)
+    processed = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class CertificateImportBatch(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     event = models.ForeignKey('events.Event', on_delete=models.CASCADE)

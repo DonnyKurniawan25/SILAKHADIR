@@ -226,6 +226,24 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
     def cancel_verification_all(self, request, event_id=None):
         return self._set_verification_status(request, event_id, Certificate.Status.PROCESSING)
 
+    @action(detail=False, methods=['post'], url_path='compress-all', parser_classes=[JSONParser])
+    def compress_all(self, request, event_id=None):
+        from .compression import start_job
+        from rest_framework.exceptions import ValidationError
+        if not isinstance(request.data, dict) or request.data:
+            raise ValidationError('Body harus objek JSON kosong: {}.')
+        return Response(start_job(event_id, request.user))
+
+    @action(detail=False, methods=['post'], url_path=r'compress-all/(?P<job_id>[^/.]+)', parser_classes=[JSONParser])
+    def compress_all_step(self, request, event_id=None, job_id=None):
+        from .compression import step_job
+        from rest_framework.exceptions import ValidationError
+        if not isinstance(request.data, dict) or set(request.data) - {'processed'}:
+            raise ValidationError('Body harus objek JSON dengan processed opsional.')
+        if 'processed' in request.data and type(request.data['processed']) is not int:
+            raise ValidationError('processed harus bilangan bulat non-negatif.')
+        return Response(step_job(event_id, request.user, job_id, request.data.get('processed')))
+
     @action(detail=False, methods=['post'], url_path='number', parser_classes=[JSONParser])
     def number(self, request, event_id=None):
         """Correct metadata only; signed PDFs, QR and verification stay intact."""

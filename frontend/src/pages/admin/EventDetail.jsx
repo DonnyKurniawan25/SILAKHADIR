@@ -13,6 +13,7 @@ import UploadCertificateModal from './UploadCertificateModal'
 import BulkUploadModal from './BulkUploadModal'
 import PdfPreviewModal from './PdfPreviewModal'
 import CertificateNumberEditor from '../../components/CertificateNumberEditor'
+import CertificateCompressionControls from '../../components/CertificateCompressionControls'
 import { getAuthenticatedPdf } from '../../api/finalImportApi'
 import { importError } from '../../utils/importWorkflow.mjs'
 import EventReportTab from './EventReportTab'
@@ -349,6 +350,7 @@ function CertTab({ eventId, certs, onRefresh, onImport, canManageNumbers = false
       <p className="text-xs text-ink-500">Untuk mengganti PDF, impor kembali dan pilih “Ganti sertifikat yang sudah ada” setelah memeriksa peserta.</p>
     </section>
     {canManageNumbers && <CertificateNumberEditor eventId={eventId} certificates={certs} onRefresh={onRefresh} />}
+    {canManageNumbers && <CertificateCompressionControls eventId={eventId} onRefresh={onRefresh} />}
     <div className="flex flex-wrap gap-2">
       <button type="button" disabled={verificationBusy || !certs.length} onClick={() => handleVerification(false)} className="btn-primary">Verifikasi semua</button>
       <button type="button" disabled={verificationBusy || !certs.length} onClick={() => handleVerification(true)} className="btn-outline">Batalkan verifikasi semua</button>
