@@ -124,6 +124,7 @@ class EventCertificateViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CertificateSerializer
     permission_classes = [IsAdminOrSuperAdmin]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+    pagination_class = None
 
     def get_queryset(self):
         return Certificate.objects.filter(

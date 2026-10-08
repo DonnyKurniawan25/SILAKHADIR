@@ -2,8 +2,8 @@ import api from './axios'
 
 export const listCertificates = (params) => api.get('/certificates/', { params })
 
-export const listEventCertificates = (eventId) =>
-  api.get(`/events/${eventId}/certificates/`)
+export const listEventCertificates = (eventId, params) =>
+  api.get(`/events/${eventId}/certificates/`, { params })
 
 export const uploadCertificate = (eventId, { participantId, pdfFile, certificateNumber, newParticipant }) => {
   const fd = new FormData()
