@@ -48,6 +48,14 @@ test('Participant lookup auto-fill payload mapping', () => {
   assert.equal(lookupResponse.is_asn, true)
 })
 
+test('AttendanceForm wires instant auto-fill and controlled checkbox', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const source = await readFile(new URL('../pages/public/AttendanceForm.jsx', import.meta.url), 'utf8')
+  assert.match(source, /checked=\{Boolean\(isAsn\)\}/)
+  assert.match(source, /val\.length === 16 && \/\^\\d\{16\}\$\/\.test\(val\)/)
+  assert.doesNotMatch(source, /data\.requires_nip/)
+})
+
 test('EventDetail CertTab integrates DataTable for pagination and search', async () => {
   const { readFile } = await import('node:fs/promises')
   const source = await readFile(new URL('../pages/admin/EventDetail.jsx', import.meta.url), 'utf8')

@@ -65,8 +65,7 @@ class PublicEventQRView(APIView):
 class PublicParticipantLookupView(APIView):
     """Lookup profil peserta lama untuk mengisi form absensi otomatis.
 
-    NIK digunakan sebagai identitas awal. Untuk profil ASN, NIP juga wajib cocok
-    sebelum data profil dikembalikan.
+    Mencari profil peserta berdasarkan NIK (16 digit) atau NIP (18 digit).
     """
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
@@ -76,26 +75,52 @@ class PublicParticipantLookupView(APIView):
         event = get_object_or_404(Event, public_slug=slug)
         nik = str(request.data.get('nik') or '').strip()
         nip = str(request.data.get('nip') or '').strip()
-        if len(nik) != 16 or not nik.isdigit():
+        if nik and (len(nik) != 16 or not nik.isdigit()):
             return Response({'detail': 'NIK harus 16 digit angka.'}, status=status.HTTP_400_BAD_REQUEST)
         if nip and (len(nip) != 18 or not nip.isdigit()):
             return Response({'detail': 'NIP harus 18 digit angka.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not nik and not nip:
+            return Response({'detail': 'NIK atau NIP wajib diisi.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        participant = Participant.objects.filter(nik=nik).order_by('-updated_at').first()
-        if not participant:
-            return Response({'found': False})
-        if participant.is_asn and participant.nip != nip:
-            return Response({'found': False, 'requires_nip': True})
+        participant = None
+        if nik and nip:
+            participant = Participant.objects.filter(nik=nik, nip=nip).order_by('-updated_at').first()
+        if not participant and nik:
+            participant = Participant.objects.filter(nik=nik).order_by('-updated_at').first()
+        if not participant and nip:
+            participant = Participant.objects.filter(nip=nip).order_by('-updated_at').first()
 
-        return Response({
-            'found': True,
-            'is_asn': participant.is_asn,
-            'full_name': participant.full_name,
-            'institution': participant.institution,
-            'position': participant.position,
-            'phone': participant.phone,
-            'email': participant.email,
-        })
+        if participant:
+            return Response({
+                'found': True,
+                'is_asn': bool(participant.is_asn or participant.nip),
+                'nik': participant.nik or '',
+                'nip': participant.nip or '',
+                'full_name': participant.full_name,
+                'institution': participant.institution,
+                'position': participant.position,
+                'phone': participant.phone,
+                'email': participant.email,
+            })
+
+        if nip:
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            user_match = User.objects.filter(nip=nip).first()
+            if user_match:
+                return Response({
+                    'found': True,
+                    'is_asn': True,
+                    'nik': '',
+                    'nip': user_match.nip or '',
+                    'full_name': user_match.get_full_name() or user_match.username,
+                    'institution': getattr(user_match, 'institution', '') or 'Pemerintah Kabupaten Lombok Barat',
+                    'position': getattr(user_match, 'jabatan', '') or '',
+                    'phone': getattr(user_match, 'phone', '') or '',
+                    'email': user_match.email or '',
+                })
+
+        return Response({'found': False})
 
 
 class PublicAttendanceView(APIView):

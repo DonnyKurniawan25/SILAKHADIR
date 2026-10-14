@@ -27,32 +27,39 @@ export default function AttendanceForm() {
       .finally(() => setLoading(false))
   }, [slug])
 
-  const lookupExistingParticipant = async () => {
-    const nik = String(getValues('nik') || '').trim()
-    const nip = String(getValues('nip') || '').trim()
-    if (!/^\d{16}$/.test(nik)) return
-    if (watch('is_asn') && nip && !/^\d{18}$/.test(nip)) return
+  const lastLookedUp = useRef('')
+  const lookupExistingParticipant = async (overrideNik, overrideNip) => {
+    const nik = String(overrideNik ?? getValues('nik') ?? '').trim()
+    const nip = String(overrideNip ?? getValues('nip') ?? '').trim()
+    if (!/^\d{16}$/.test(nik) && !/^\d{18}$/.test(nip)) return
+
+    const key = `${nik}-${nip}`
+    if (lastLookedUp.current === key) return
+    lastLookedUp.current = key
 
     setLookupLoading(true)
     setLookupMessage('')
     try {
       const { data } = await lookupParticipant(slug, { nik, nip })
       if (data.found) {
-        setValue('is_asn', data.is_asn, { shouldValidate: true })
-        setValue('full_name', data.full_name || '', { shouldValidate: true })
-        setValue('institution', data.institution || '')
-        setValue('position', data.position || '')
-        setValue('phone', data.phone || '')
-        setValue('email', data.email || '')
-        if (data.is_asn && data.nip) setValue('nip', data.nip)
+        setValue('is_asn', Boolean(data.is_asn), { shouldValidate: true, shouldDirty: true })
+        if (data.is_asn && data.nip) {
+          setValue('nip', data.nip, { shouldValidate: true, shouldDirty: true })
+        }
+        if (data.nik && !getValues('nik')) {
+          setValue('nik', data.nik, { shouldValidate: true, shouldDirty: true })
+        }
+        setValue('full_name', data.full_name || '', { shouldValidate: true, shouldDirty: true })
+        setValue('institution', data.institution || '', { shouldValidate: true, shouldDirty: true })
+        setValue('position', data.position || '', { shouldValidate: true, shouldDirty: true })
+        setValue('phone', data.phone || '', { shouldValidate: true, shouldDirty: true })
+        setValue('email', data.email || '', { shouldValidate: true, shouldDirty: true })
         setLookupMessage('Data sebelumnya ditemukan dan sudah diisi otomatis.')
-      } else if (data.requires_nip) {
-        setValue('is_asn', true, { shouldValidate: true })
-        setLookupMessage('Data ASN ditemukan. Masukkan NIP yang sesuai untuk mengisi otomatis.')
       } else {
         setLookupMessage('Data belum pernah ditemukan. Silakan isi data baru.')
       }
     } catch (e) {
+      lastLookedUp.current = ''
       setLookupMessage(e?.response?.data?.detail || 'Data lama belum dapat dimuat.')
     } finally {
       setLookupLoading(false)
@@ -175,15 +182,28 @@ export default function AttendanceForm() {
                   pattern: { value: /^[0-9]+$/, message: 'Hanya angka' },
                   minLength: { value: 16, message: 'NIK harus 16 digit' },
                   maxLength: { value: 16, message: 'NIK harus 16 digit' },
+                  onChange: (e) => {
+                    const val = e.target.value.trim()
+                    if (val.length === 16 && /^\d{16}$/.test(val)) {
+                      lookupExistingParticipant(val)
+                    }
+                  },
                 })}
-                onBlur={lookupExistingParticipant}
+                onBlur={() => lookupExistingParticipant()}
               />
               {errors.nik && <p className="text-xs text-rose-600 mt-1">{errors.nik.message}</p>}
             </div>
             <div>
               <label className="label">Jenis Peserta</label>
-              <label className="flex items-center gap-2 h-10 px-3 border border-slate-300 rounded bg-white text-sm">
-                <input type="checkbox" {...register('is_asn')} />
+              <label className="flex items-center gap-2 h-10 px-3 border border-slate-300 rounded bg-white text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={Boolean(isAsn)}
+                  {...register('is_asn')}
+                  onChange={(e) => {
+                    setValue('is_asn', e.target.checked, { shouldValidate: true, shouldDirty: true })
+                  }}
+                />
                 Saya adalah ASN
               </label>
             </div>
@@ -200,8 +220,14 @@ export default function AttendanceForm() {
                   pattern: { value: /^[0-9]+$/, message: 'Hanya angka' },
                   minLength: { value: 18, message: 'NIP harus 18 digit' },
                   maxLength: { value: 18, message: 'NIP harus 18 digit' },
+                  onChange: (e) => {
+                    const val = e.target.value.trim()
+                    if (val.length === 18 && /^\d{18}$/.test(val)) {
+                      lookupExistingParticipant(undefined, val)
+                    }
+                  },
                 })}
-                onBlur={lookupExistingParticipant}
+                onBlur={() => lookupExistingParticipant()}
               />
               {errors.nip && <p className="text-xs text-rose-600 mt-1">{errors.nip.message}</p>}
             </div>

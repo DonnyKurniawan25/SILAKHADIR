@@ -18,25 +18,32 @@ class AttendanceProfileLookupTests(TestCase):
         self.nik = '1234567890123456'
         self.nip = '123456789012345678'
 
-    def test_reuses_profile_from_previous_event_without_exposing_contact(self):
+    def test_reuses_profile_from_previous_event(self):
         Participant.objects.create(event=self.old_event, nik=self.nik, full_name='Nama Tes', institution='Diskominfo', position='Staf', phone='08123456789', email='rahasia@example.com')
         response = self.client.post(self.url, {'nik': self.nik}, format='json')
         self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['found'])
         self.assertEqual(response.data['full_name'], 'Nama Tes')
         self.assertEqual(response.data['institution'], 'Diskominfo')
-        self.assertNotIn('phone', response.data)
-        self.assertNotIn('email', response.data)
+        self.assertEqual(response.data['phone'], '08123456789')
+        self.assertEqual(response.data['email'], 'rahasia@example.com')
 
-    def test_asn_requires_matching_nip(self):
+    def test_asn_lookup_by_nik_returns_nip_and_profile(self):
         Participant.objects.create(event=self.old_event, nik=self.nik, nip=self.nip, is_asn=True, full_name='ASN Tes')
-        missing = self.client.post(self.url, {'nik': self.nik}, format='json')
-        wrong = self.client.post(self.url, {'nik': self.nik, 'nip': '987654321012345678'}, format='json')
-        found = self.client.post(self.url, {'nik': self.nik, 'nip': self.nip}, format='json')
-        self.assertEqual(missing.status_code, 200)
-        self.assertEqual(missing.data, {'found': False, 'requires_nip': True})
-        self.assertEqual(wrong.data, {'found': False, 'requires_nip': True})
-        self.assertEqual(found.data['full_name'], 'ASN Tes')
-        self.assertNotIn('nip', found.data)
+        response = self.client.post(self.url, {'nik': self.nik}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['found'])
+        self.assertTrue(response.data['is_asn'])
+        self.assertEqual(response.data['full_name'], 'ASN Tes')
+        self.assertEqual(response.data['nip'], self.nip)
+
+    def test_asn_lookup_by_nip_returns_profile(self):
+        Participant.objects.create(event=self.old_event, nik=self.nik, nip=self.nip, is_asn=True, full_name='ASN Tes')
+        response = self.client.post(self.url, {'nip': self.nip}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['found'])
+        self.assertEqual(response.data['nik'], self.nik)
+        self.assertEqual(response.data['full_name'], 'ASN Tes')
 
     def test_unknown_and_invalid_nik(self):
         self.assertEqual(self.client.post(self.url, {'nik': self.nik}, format='json').data, {'found': False})
