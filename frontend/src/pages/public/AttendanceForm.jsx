@@ -18,7 +18,46 @@ export default function AttendanceForm() {
   const [lookupLoading, setLookupLoading] = useState(false)
   const [lookupMessage, setLookupMessage] = useState('')
   const sigRef = useRef(null)
+  const sigContainerRef = useRef(null)
+  const sigDataRef = useRef(null)
   const captchaRef = useRef(null)
+
+  // Resize canvas to match container pixel dimensions and restore saved strokes
+  const resizeCanvas = () => {
+    const canvas = sigRef.current
+    const container = sigContainerRef.current
+    if (!canvas || !container) return
+    const saved = sigDataRef.current
+    const c = canvas.getCanvas()
+    const ratio = Math.max(window.devicePixelRatio || 1, 1)
+    const w = container.offsetWidth
+    const h = container.offsetHeight
+    if (c.width === w * ratio && c.height === h * ratio) return
+    c.width = w * ratio
+    c.height = h * ratio
+    c.style.width = w + 'px'
+    c.style.height = h + 'px'
+    c.getContext('2d').scale(ratio, ratio)
+    canvas.clear()
+    if (saved) canvas.fromData(saved)
+  }
+
+  // Save signature strokes on every stroke end so we can restore after resize
+  const handleSigEnd = () => {
+    if (sigRef.current) sigDataRef.current = sigRef.current.toData()
+  }
+
+  useEffect(() => {
+    resizeCanvas()
+    window.addEventListener('resize', resizeCanvas)
+    // Mobile keyboards and scroll can trigger layout changes
+    const observer = new ResizeObserver(resizeCanvas)
+    if (sigContainerRef.current) observer.observe(sigContainerRef.current)
+    return () => {
+      window.removeEventListener('resize', resizeCanvas)
+      observer.disconnect()
+    }
+  }, [event])
 
   useEffect(() => {
     publicEventInfo(slug)
@@ -277,15 +316,16 @@ export default function AttendanceForm() {
           <p className="text-xs text-ink-500 mb-2">
             Tanda tangani dengan mouse atau jari pada kotak di bawah ini.
           </p>
-          <div className="border border-slate-300 rounded bg-white">
+          <div ref={sigContainerRef} className="border border-slate-300 rounded bg-white" style={{ height: '10rem' }}>
             <SignatureCanvas
               ref={sigRef}
-              canvasProps={{ className: 'w-full h-40' }}
+              canvasProps={{ className: 'w-full h-full', style: { touchAction: 'none' } }}
               penColor="#0f2440"
+              onEnd={handleSigEnd}
             />
           </div>
           <div className="mt-2 text-right">
-            <button type="button" onClick={() => sigRef.current?.clear()}
+            <button type="button" onClick={() => { sigRef.current?.clear(); sigDataRef.current = null }}
                     className="text-xs text-ink-500 hover:text-rose-600">
               Bersihkan tanda tangan
             </button>
