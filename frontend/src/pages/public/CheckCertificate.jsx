@@ -47,7 +47,8 @@ export function CertificateCard({ certificate: c }) {
         {c.organizer && <p className="flex items-start gap-2"><Building2 aria-hidden="true" className="w-4 h-4 shrink-0 mt-0.5" /><span className="break-words">{c.organizer}</span></p>}
       </div>
       <p className="mt-4 text-xs text-ink-500">No. sertifikat: <span className="font-mono text-ink-700 break-all">{c.certificate_number || 'Belum ditetapkan'}</span></p>
-      {!status.verified && <p className="mt-2 text-xs text-amber-800">{downloadable ? 'PDF dapat diunduh. Pengesahan sertifikat masih menunggu penyelenggara.' : 'Sertifikat masih diproses oleh penyelenggara.'}</p>}
+      {!downloadable && <p className="mt-2 text-xs text-amber-800">Sertifikat sedang diproses, silakan ditunggu.</p>}
+      {downloadable && !status.verified && <p className="mt-2 text-xs text-amber-800">PDF dapat diunduh. Pengesahan sertifikat masih menunggu penyelenggara.</p>}
       <div className="flex flex-col lg:flex-row gap-2 mt-5">
         {downloadable && <button type="button" onClick={download} disabled={downloading} className="btn-primary justify-center">{downloading ? <Loader2 aria-hidden="true" className="w-4 h-4 animate-spin" /> : <Download aria-hidden="true" className="w-4 h-4" />}{downloading ? 'Mengunduh…' : 'Unduh Sertifikat'}</button>}
 

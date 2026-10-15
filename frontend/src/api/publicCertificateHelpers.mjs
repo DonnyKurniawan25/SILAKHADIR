@@ -6,6 +6,7 @@ export function certificateSearchParams(value, eventId) {
 
 // Only the public token route is safe for anonymous visitors. Never link pdf_url.
 export function certificateDownloadUrl(certificate, apiBase = '/api') {
+  if (certificate.can_download === false || certificate.status === 'dicabut') return null
   const url = certificate.download_url
   if (typeof url === 'string' && /^(?:https?:\/\/[^/]+)?\/[^?#]*public\/certificates\/download\/[^/?#]+\/(?:\?[^#]*)?$/.test(url)) return url
   if (certificate.can_download && certificate.download_token) return `${apiBase.replace(/\/$/, '')}/public/certificates/download/${encodeURIComponent(certificate.download_token)}/`

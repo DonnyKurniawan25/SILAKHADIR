@@ -29,6 +29,8 @@ class Attendance(models.Model):
     )
 
     attendance_time = models.DateTimeField(auto_now_add=True)
+    # Evaluasi per kehadiran, bukan profil identitas. Impor/admin boleh kosong.
+    feedback = models.TextField('Kritik dan Saran', max_length=2000, blank=True, default='')
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.CharField(max_length=500, blank=True)
 

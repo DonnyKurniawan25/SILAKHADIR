@@ -1,6 +1,8 @@
 from django.conf import settings
 from rest_framework import serializers
 
+from apps.attendance.models import Attendance
+
 from .models import Certificate, CertificateNumberFormat
 
 
@@ -126,3 +128,28 @@ class CertificatePublicSerializer(serializers.ModelSerializer):
 
     def get_verify_url(self, obj):
         return f'{settings.FRONTEND_URL}/verifikasi/{obj.verification_token}'
+
+
+class PendingTrainingPublicSerializer(CertificatePublicSerializer):
+    """Read-only attendance projection, never an issued/verified certificate.
+
+    ID is the real attendance UUID; no certificate or token is invented.
+    Reuse the public allowlist for participant name and event metadata.
+    """
+    certificate_number = serializers.CharField(read_only=True, default='')
+    status = serializers.SerializerMethodField()
+
+    class Meta(CertificatePublicSerializer.Meta):
+        model = Attendance
+
+    def get_status(self, obj):
+        return Certificate.Status.PROCESSING
+
+    def get_can_download(self, obj):
+        return False
+
+    def get_download_url(self, obj):
+        return None
+
+    def get_verify_url(self, obj):
+        return None

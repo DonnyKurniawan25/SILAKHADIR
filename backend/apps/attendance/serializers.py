@@ -38,6 +38,15 @@ class PublicAttendanceSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=20, allow_blank=True, required=False)
     email = serializers.EmailField(allow_blank=True, required=False)
 
+    feedback = serializers.CharField(
+        required=True, allow_blank=False, max_length=2000, trim_whitespace=True,
+        error_messages={
+            'required': 'Kritik dan Saran wajib diisi.',
+            'blank': 'Kritik dan Saran wajib diisi.',
+            'max_length': 'Kritik dan Saran maksimal 2000 karakter.',
+        },
+    )
+
     signature = Base64ImageField(required=False, allow_null=True)
     photo = Base64ImageField(required=False, allow_null=True)
 

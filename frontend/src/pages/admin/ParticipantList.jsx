@@ -64,6 +64,11 @@ export default function ParticipantList({ eventId, onChanged, refreshVersion }) 
         ? <span className="badge-green">Hadir</span>
         : <span className="badge-gray">Belum</span>
     )},
+    { key: 'feedback', title: 'Kritik dan Saran', searchValue: (p) => p.feedback || '', render: (p) => (
+      p.feedback
+        ? <div className="whitespace-pre-wrap break-words min-w-[12rem] max-w-md">{p.feedback}</div>
+        : <span className="text-slate-400">—</span>
+    )},
     { key: 'certificate_status', title: 'Sertifikat', render: (p) => (
       <div className="space-y-1">
         <div>{p.certificate_status === 'tersedia'

@@ -806,14 +806,40 @@ class PublicCheckCertificateView(APIView):
         if data.get('event_id'):
             qs = qs.filter(event_id=data['event_id'])
 
-        if not qs.exists():
+        # Add real attended trainings that have no certificate at all. Excluding
+        # every existing status also preserves the public revoked-record contract.
+        from apps.attendance.models import Attendance
+        from django.db.models import Exists, OuterRef
+        from .serializers import PendingTrainingPublicSerializer
+
+        pending = Attendance.objects.filter(
+            identity_filter, status=Attendance.Status.HADIR,
+        ).annotate(
+            has_certificate=Exists(Certificate.objects.filter(
+                event_id=OuterRef('event_id'), participant_id=OuterRef('participant_id'),
+            )),
+        ).filter(has_certificate=False).select_related('event', 'participant')
+        if data.get('event_id'):
+            pending = pending.filter(event_id=data['event_id'])
+
+        certificates = list(qs)
+        attendances = list(pending)
+        rows = list(zip(
+            (cert.event.start_date for cert in certificates),
+            CertificatePublicSerializer(certificates, many=True).data,
+        )) + list(zip(
+            (attendance.event.start_date for attendance in attendances),
+            PendingTrainingPublicSerializer(attendances, many=True).data,
+        ))
+        rows.sort(key=lambda row: row[0], reverse=True)
+        results = [row for _, row in rows]
+        if not results:
             return Response({
                 'found': False,
                 'message': 'Sertifikat Anda belum tersedia atau data Anda belum terdaftar.',
             })
 
-        serializer = CertificatePublicSerializer(qs, many=True)
-        return Response({'found': True, 'count': qs.count(), 'results': serializer.data})
+        return Response({'found': True, 'count': len(results), 'results': results})
 
 
 class PublicDownloadCertificateView(APIView):

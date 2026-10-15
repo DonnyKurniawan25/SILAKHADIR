@@ -6,6 +6,7 @@ import { publicEventInfo, submitAttendance, lookupParticipant } from '../../api/
 import { Calendar, MapPin, Building2, Loader2, AlertCircle } from 'lucide-react'
 import Swal from 'sweetalert2'
 import Captcha from '../../components/Captcha'
+import AttendanceFeedback from '../../components/AttendanceFeedback'
 
 export default function AttendanceForm() {
   const { slug } = useParams()
@@ -312,7 +313,13 @@ export default function AttendanceForm() {
         <hr className="border-slate-200" />
 
         <div>
-          <div className="eyebrow mb-2">C. Tanda Tangan</div>
+          <AttendanceFeedback register={register} error={errors.feedback} />
+        </div>
+
+        <hr className="border-slate-200" />
+
+        <div>
+          <div className="eyebrow mb-2">D. Tanda Tangan</div>
           <p className="text-xs text-ink-500 mb-2">
             Tanda tangani dengan mouse atau jari pada kotak di bawah ini.
           </p>
@@ -335,7 +342,7 @@ export default function AttendanceForm() {
         <hr className="border-slate-200" />
 
         <div>
-          <div className="eyebrow mb-2">D. Verifikasi Keamanan</div>
+          <div className="eyebrow mb-2">E. Verifikasi Keamanan</div>
           <Captcha ref={captchaRef} />
         </div>
 

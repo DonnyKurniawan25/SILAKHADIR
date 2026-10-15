@@ -6,6 +6,7 @@ from .models import Participant
 class ParticipantSerializer(serializers.ModelSerializer):
     attendance_status = serializers.SerializerMethodField()
     attendance_time = serializers.SerializerMethodField()
+    feedback = serializers.SerializerMethodField()
     certificate_status = serializers.SerializerMethodField()
     certificate_history = serializers.SerializerMethodField()
 
@@ -21,7 +22,7 @@ class ParticipantSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'event', 'nik', 'nip', 'is_asn', 'full_name',
             'institution', 'position', 'phone', 'email',
-            'attendance_status', 'attendance_time', 'certificate_status', 'certificate_history',
+            'attendance_status', 'attendance_time', 'feedback', 'certificate_status', 'certificate_history',
             'created_at', 'updated_at',
         )
         read_only_fields = ('id', 'event', 'created_at', 'updated_at')
@@ -78,6 +79,18 @@ class ParticipantSerializer(serializers.ModelSerializer):
     def get_attendance_time(self, obj):
         att = self._attendance(obj)
         return att.attendance_time if att else None
+
+    def get_feedback(self, obj):
+        # Existing participant routes admit every authenticated role. Evaluation
+        # text is private to admins and this event's organizer, never identity lookup.
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if not user or not user.is_authenticated:
+            return ''
+        if not (user.is_admin_role() or obj.event.created_by_id == user.pk):
+            return ''
+        att = self._attendance(obj)
+        return att.feedback if att else ''
 
     def get_certificate_status(self, obj):
         cert = obj.certificates.first()

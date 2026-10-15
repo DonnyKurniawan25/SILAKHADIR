@@ -39,6 +39,17 @@ test('cover renders provided thumbnail; missing image has branded fallback; no P
   assert.match(html, /PDF belum tersedia/)
   assert.doesNotMatch(html, /Unduh Sertifikat|protected.pdf/)
 })
+test('attended training without certificate or PDF shows exact processing message, no download or verification', () => {
+  const html = renderCard({ certificate_number: '', verify_url: null, can_download: false, download_url: null })
+  assert.match(html, /Sertifikat sedang diproses, silakan ditunggu\./)
+  assert.match(html, /Pelatihan Pelayanan Publik/)
+  assert.doesNotMatch(html, /Unduh Sertifikat|>Terverifikasi</)
+})
+test('explicit unavailable PDF suppresses even a stale download URL', () => {
+  const html = renderCard({ status: 'tersedia', can_download: false, download_url: '/api/public/certificates/download/stale/' })
+  assert.match(html, /Sertifikat sedang diproses, silakan ditunggu\./)
+  assert.doesNotMatch(html, /Unduh Sertifikat/)
+})
 test('tersedia is verified under backend contract; explicit false wins', () => {
   assert.match(renderCard({ status: 'tersedia' }), />Terverifikasi</)
   assert.match(renderCard({ status: 'tersedia', valid: false }), /Belum terverifikasi/)

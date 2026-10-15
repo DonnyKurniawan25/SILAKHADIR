@@ -19,6 +19,7 @@ class CanvaAttendanceContractTests(TestCase):
         with patch('apps.attendance.serializers.verify_captcha', return_value=True):
             response = APIClient().post(f'/api/public/events/{event.public_slug}/attendance/', {
                 'nik': '1234567890123456', 'full_name': 'Nama Peserta',
+                'feedback': 'Materi baik, mohon tambah waktu diskusi.',
                 'captcha_token': 'test', 'captcha_answer': 'test',
             }, format='json')
         self.assertEqual(response.status_code, 201, getattr(response, 'data', None))

@@ -193,6 +193,7 @@ class PublicAttendanceView(APIView):
                     user_agent=request.META.get('HTTP_USER_AGENT', '')[:500],
                     signature=data.get('signature'),
                     photo=data.get('photo'),
+                    feedback=data['feedback'],
                     status=Attendance.Status.HADIR,
                 )
         except IntegrityError:
