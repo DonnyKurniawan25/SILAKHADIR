@@ -52,6 +52,7 @@ class CertificateSerializer(serializers.ModelSerializer):
             'certificate_number', 'number_format', 'source',
             'status', 'pdf_file', 'qr_code',
             'verification_token', 'download_token',
+            'download_count', 'last_downloaded_at',
             'generated_at', 'updated_at',
             'download_url', 'verify_url', 'pdf_url',
         )

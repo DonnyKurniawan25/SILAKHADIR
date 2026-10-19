@@ -15,11 +15,21 @@ export default function CertificateList() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
   const [rows, setRows] = useState([])
+  const [downloadFilter, setDownloadFilter] = useState('all')
   const [bulkEventId, setBulkEventId] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const actionLock = useRef(false)
+
+  const downloadedCount = rows.filter((c) => (c.download_count || 0) > 0).length
+  const notDownloadedCount = rows.length - downloadedCount
+
+  const displayRows = rows.filter((c) => {
+    if (downloadFilter === 'downloaded') return (c.download_count || 0) > 0
+    if (downloadFilter === 'not_downloaded') return !(c.download_count > 0)
+    return true
+  })
   const reload = useCallback(async () => {
     const response = await listCertificates({ page_size: 200 })
     setRows(response.data.results || response.data)
@@ -69,6 +79,33 @@ export default function CertificateList() {
     { key: 'event_title', title: 'Kegiatan' },
     { key: 'status', title: 'Status', render: (c) => { const status = certificateStatus(c); return <span className={status.badge}>{status.label}</span> } },
     {
+      key: 'download_info',
+      title: 'Unduhan',
+      render: (c) => {
+        const count = c.download_count || 0
+        if (count === 0) {
+          return <span className="badge-gray">Belum diunduh</span>
+        }
+        return (
+          <div className="space-y-0.5">
+            <span className="badge-green font-medium">{count}x diunduh</span>
+            {c.last_downloaded_at && (
+              <div className="text-[11px] text-ink-500 whitespace-nowrap">
+                {new Date(c.last_downloaded_at).toLocaleDateString('id-ID', {
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </div>
+            )}
+          </div>
+        )
+      },
+      searchValue: (c) => (c.download_count > 0 ? `${c.download_count}x diunduh sudah download` : 'belum diunduh'),
+    },
+    {
       key: 'generated_at', title: 'Diterbitkan',
       render: (c) => new Date(c.generated_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
     },
@@ -114,6 +151,48 @@ export default function CertificateList() {
     {busy && <p role="status" className="text-sm text-ink-500">Memproses verifikasi...</p>}
     {error && <p role="alert" className="text-sm text-red-700 bg-red-50 rounded p-3">{error}</p>}
     {success && <p role="status" className="text-sm text-green-800 bg-green-50 rounded p-3">{success}</p>}
-    <DataTable rows={rows} columns={columns} />
+    {isAdmin && rows.length > 0 && (
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 border border-slate-200 rounded p-3">
+        <div className="text-sm font-medium text-ink-700">
+          Status Unduhan: <span className="font-bold text-ink-900">{downloadedCount}</span> dari <span className="font-bold text-ink-900">{rows.length}</span> sertifikat sudah diunduh user
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setDownloadFilter('all')}
+            className={`text-xs px-2.5 py-1 rounded font-medium transition ${
+              downloadFilter === 'all'
+                ? 'bg-brand-900 text-white shadow-sm'
+                : 'bg-white text-ink-700 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            Semua ({rows.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setDownloadFilter('downloaded')}
+            className={`text-xs px-2.5 py-1 rounded font-medium transition ${
+              downloadFilter === 'downloaded'
+                ? 'bg-emerald-700 text-white shadow-sm'
+                : 'bg-white text-emerald-800 hover:bg-emerald-50 border border-emerald-200'
+            }`}
+          >
+            Sudah Diunduh ({downloadedCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setDownloadFilter('not_downloaded')}
+            className={`text-xs px-2.5 py-1 rounded font-medium transition ${
+              downloadFilter === 'not_downloaded'
+                ? 'bg-slate-700 text-white shadow-sm'
+                : 'bg-white text-ink-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            Belum Diunduh ({notDownloadedCount})
+          </button>
+        </div>
+      </div>
+    )}
+    <DataTable rows={displayRows} columns={columns} />
   </div>
 }

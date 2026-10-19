@@ -314,6 +314,8 @@ def apply_import(event, owner, data):
                 cert.status = Certificate.Status.AVAILABLE
                 cert.certificate_number = number
                 cert.number_format = None
+                cert.download_count = 0
+                cert.last_downloaded_at = None
                 # Use random file identity, never the optional certificate number.
                 intended = f'certificates/{event.pk}/final-{uuid.uuid4().hex}.pdf'
                 saved.append(intended)

@@ -119,6 +119,8 @@ class EventReportViewSet(viewsets.ViewSet):
             'nik': c.participant.nik,
             'nip': c.participant.nip,
             'status': c.status,
+            'download_count': c.download_count,
+            'last_downloaded_at': c.last_downloaded_at,
             'generated_at': c.generated_at,
         } for c in certs]
         return Response({
@@ -134,7 +136,8 @@ class EventReportViewSet(viewsets.ViewSet):
         ws = wb.active
         ws.title = 'Rekap'
         ws.append(['No', 'Nama', 'NIK', 'NIP', 'ASN', 'Instansi', 'Jabatan',
-                   'Status Hadir', 'Waktu Absen', 'No. Sertifikat'])
+                   'Status Hadir', 'Waktu Absen', 'No. Sertifikat',
+                   'Jumlah Unduh Sertifikat', 'Waktu Unduh Terakhir'])
         for i, p in enumerate(event.participants.all(), start=1):
             att = p.attendances.first()
             cert = p.certificates.filter(event=event).first()
@@ -144,6 +147,8 @@ class EventReportViewSet(viewsets.ViewSet):
                 att.status if att else 'belum_hadir',
                 att.attendance_time.strftime('%Y-%m-%d %H:%M:%S') if att else '',
                 cert.certificate_number if cert else '',
+                cert.download_count if cert else 0,
+                cert.last_downloaded_at.strftime('%Y-%m-%d %H:%M:%S') if (cert and cert.last_downloaded_at) else '',
             ])
         buf = io.BytesIO()
         wb.save(buf)

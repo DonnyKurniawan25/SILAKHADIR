@@ -1,4 +1,6 @@
-from django.db.models import Q
+from django.db import models
+from django.db.models import F, Q
+from django.utils import timezone
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
@@ -854,6 +856,25 @@ class PublicDownloadCertificateView(APIView):
         stream = open_public_pdf(cert)
         if stream is None:
             raise Http404('File sertifikat tidak ditemukan.')
+
+        is_admin = bool(
+            request.user and request.user.is_authenticated and
+            (getattr(request.user, 'is_admin_role', lambda: False)() or request.user.is_staff)
+        )
+        if not is_admin:
+            from .models import CertificateDownloadLog
+            x_fwd = request.META.get('HTTP_X_FORWARDED_FOR')
+            client_ip = x_fwd.split(',')[0].strip() if x_fwd else request.META.get('REMOTE_ADDR')
+            Certificate.objects.filter(pk=cert.pk).update(
+                download_count=F('download_count') + 1,
+                last_downloaded_at=timezone.now(),
+            )
+            CertificateDownloadLog.objects.create(
+                certificate=cert,
+                ip_address=client_ip,
+                user_agent=(request.META.get('HTTP_USER_AGENT') or '')[:500],
+            )
+
         return FileResponse(
             stream,
             as_attachment=True,

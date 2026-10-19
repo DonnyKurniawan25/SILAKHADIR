@@ -74,6 +74,15 @@ export default function ParticipantList({ eventId, onChanged, refreshVersion }) 
         <div>{p.certificate_status === 'tersedia'
           ? <span className="badge-green">Tersedia pada kegiatan ini</span>
           : <span className="badge-gray">Belum pada kegiatan ini</span>}</div>
+        {p.certificate_status === 'tersedia' && (
+          <div>
+            {p.certificate_download_count > 0 ? (
+              <span className="badge-green font-medium">{p.certificate_download_count}x diunduh</span>
+            ) : (
+              <span className="badge-gray">Belum diunduh</span>
+            )}
+          </div>
+        )}
         {certificateHistoryLabel(p.certificate_history) && <div>
           <span className="badge-green" title={(p.certificate_history.events || []).map((event) => event.title).filter(Boolean).join(' · ')}>{certificateHistoryLabel(p.certificate_history)}</span>
         </div>}

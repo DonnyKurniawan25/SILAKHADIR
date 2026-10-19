@@ -56,12 +56,30 @@ test('AttendanceForm wires instant auto-fill and controlled checkbox', async () 
   assert.doesNotMatch(source, /data\.requires_nip/)
 })
 
-test('EventDetail CertTab integrates DataTable for pagination and search', async () => {
+test('EventDetail CertTab integrates DataTable for pagination, search, and download filters', async () => {
   const { readFile } = await import('node:fs/promises')
   const source = await readFile(new URL('../pages/admin/EventDetail.jsx', import.meta.url), 'utf8')
   assert.match(source, /import DataTable from ['"]\.\.\/\.\.\/components\/DataTable['"]/)
-  assert.match(source, /<DataTable\s+rows=\{certs\}\s+columns=\{columns\}/)
+  assert.match(source, /<DataTable\s+rows=\{displayCerts\}\s+columns=\{columns\}/)
   assert.match(source, /emptyText="Belum ada sertifikat\."/)
   assert.match(source, /defaultPageSize=\{10\}/)
+  assert.match(source, /downloadFilter/)
+  assert.match(source, /download_info/)
+  assert.match(source, /Status Unduhan:/)
+})
+
+test('CertificateList integrates download status column and filters', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const source = await readFile(new URL('../pages/admin/CertificateList.jsx', import.meta.url), 'utf8')
+  assert.match(source, /download_info/)
+  assert.match(source, /downloadFilter/)
+  assert.match(source, /<DataTable\s+rows=\{displayRows\}\s+columns=\{columns\}/)
+})
+
+test('ParticipantList renders certificate download count when available', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const source = await readFile(new URL('../pages/admin/ParticipantList.jsx', import.meta.url), 'utf8')
+  assert.match(source, /p\.certificate_download_count > 0/)
+  assert.match(source, /Belum diunduh/)
 })
 

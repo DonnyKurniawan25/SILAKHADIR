@@ -107,6 +107,9 @@ class Certificate(models.Model):
     generated_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    download_count = models.PositiveIntegerField(default=0)
+    last_downloaded_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         ordering = ['-generated_at']
         constraints = [
@@ -163,3 +166,21 @@ class CertificateImportItem(models.Model):
 
     class Meta:
         ordering = ['page_start', 'id']
+
+
+class CertificateDownloadLog(models.Model):
+    """Log setiap kali sertifikat diunduh oleh user."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    certificate = models.ForeignKey(
+        Certificate, on_delete=models.CASCADE, related_name='download_logs'
+    )
+    downloaded_at = models.DateTimeField(auto_now_add=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=500, blank=True, default='')
+
+    class Meta:
+        ordering = ['-downloaded_at']
+
+    def __str__(self):
+        return f'{self.certificate_id} at {self.downloaded_at}'
+

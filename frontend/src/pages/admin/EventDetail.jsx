@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
   Calendar, MapPin, Building2, ArrowLeft, Copy, Check,
@@ -300,11 +300,21 @@ const DEFAULT_CERT_LAYOUT = {
 function CertTab({ eventId, certs, onRefresh, onImport, canManageNumbers = false }) {
   const [pdfPreview, setPdfPreview] = useState('')
   const [downloading, setDownloading] = useState(null)
+  const [downloadFilter, setDownloadFilter] = useState('all')
   const [legacyOpen, setLegacyOpen] = useState(false)
   const [verificationBusy, setVerificationBusy] = useState(false)
   const [verificationError, setVerificationError] = useState('')
   const [verificationSuccess, setVerificationSuccess] = useState('')
   const verificationLock = useRef(false)
+
+  const downloadedCount = certs.filter((c) => (c.download_count || 0) > 0).length
+  const notDownloadedCount = certs.length - downloadedCount
+
+  const displayCerts = useMemo(() => {
+    if (downloadFilter === 'downloaded') return certs.filter((c) => (c.download_count || 0) > 0)
+    if (downloadFilter === 'not_downloaded') return certs.filter((c) => !(c.download_count > 0))
+    return certs
+  }, [certs, downloadFilter])
   const handleVerification = async (cancel, cert = null) => {
     if (verificationLock.current) return
     verificationLock.current = true
@@ -368,6 +378,33 @@ function CertTab({ eventId, certs, onRefresh, onImport, canManageNumbers = false
       searchValue: (cert) => certificateStatus(cert).label,
     },
     {
+      key: 'download_info',
+      title: 'Unduhan',
+      render: (cert) => {
+        const count = cert.download_count || 0
+        if (count === 0) {
+          return <span className="badge-gray">Belum diunduh</span>
+        }
+        return (
+          <div className="space-y-0.5">
+            <span className="badge-green font-medium">{count}x diunduh</span>
+            {cert.last_downloaded_at && (
+              <div className="text-[11px] text-ink-500 whitespace-nowrap">
+                {new Date(cert.last_downloaded_at).toLocaleDateString('id-ID', {
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </div>
+            )}
+          </div>
+        )
+      },
+      searchValue: (cert) => (cert.download_count > 0 ? `${cert.download_count}x diunduh sudah download` : 'belum diunduh'),
+    },
+    {
       key: 'actions',
       title: 'Tindakan',
       render: (cert) => {
@@ -402,8 +439,50 @@ function CertTab({ eventId, certs, onRefresh, onImport, canManageNumbers = false
     </div>
     {verificationError && <p role="alert" className="text-sm text-red-700 bg-red-50 rounded p-3">{verificationError}</p>}
     {verificationSuccess && <p role="status" className="text-sm text-green-800 bg-green-50 rounded p-3">{verificationSuccess}</p>}
+    {certs.length > 0 && (
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 border border-slate-200 rounded p-3">
+        <div className="text-sm font-medium text-ink-700">
+          Status Unduhan: <span className="font-bold text-ink-900">{downloadedCount}</span> dari <span className="font-bold text-ink-900">{certs.length}</span> peserta sudah mengunduh sertifikat
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setDownloadFilter('all')}
+            className={`text-xs px-2.5 py-1 rounded font-medium transition ${
+              downloadFilter === 'all'
+                ? 'bg-brand-900 text-white shadow-sm'
+                : 'bg-white text-ink-700 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            Semua ({certs.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setDownloadFilter('downloaded')}
+            className={`text-xs px-2.5 py-1 rounded font-medium transition ${
+              downloadFilter === 'downloaded'
+                ? 'bg-emerald-700 text-white shadow-sm'
+                : 'bg-white text-emerald-800 hover:bg-emerald-50 border border-emerald-200'
+            }`}
+          >
+            Sudah Diunduh ({downloadedCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setDownloadFilter('not_downloaded')}
+            className={`text-xs px-2.5 py-1 rounded font-medium transition ${
+              downloadFilter === 'not_downloaded'
+                ? 'bg-slate-700 text-white shadow-sm'
+                : 'bg-white text-ink-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            Belum Diunduh ({notDownloadedCount})
+          </button>
+        </div>
+      </div>
+    )}
     <DataTable
-      rows={certs}
+      rows={displayCerts}
       columns={columns}
       emptyText="Belum ada sertifikat."
       defaultPageSize={10}

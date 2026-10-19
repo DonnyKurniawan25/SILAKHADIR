@@ -9,6 +9,8 @@ class ParticipantSerializer(serializers.ModelSerializer):
     feedback = serializers.SerializerMethodField()
     certificate_status = serializers.SerializerMethodField()
     certificate_history = serializers.SerializerMethodField()
+    certificate_download_count = serializers.SerializerMethodField()
+    certificate_last_downloaded_at = serializers.SerializerMethodField()
 
     def get_certificate_history(self, obj):
         from .identity import IdentityRegistry
@@ -23,6 +25,7 @@ class ParticipantSerializer(serializers.ModelSerializer):
             'id', 'event', 'nik', 'nip', 'is_asn', 'full_name',
             'institution', 'position', 'phone', 'email',
             'attendance_status', 'attendance_time', 'feedback', 'certificate_status', 'certificate_history',
+            'certificate_download_count', 'certificate_last_downloaded_at',
             'created_at', 'updated_at',
         )
         read_only_fields = ('id', 'event', 'created_at', 'updated_at')
@@ -103,3 +106,11 @@ class ParticipantSerializer(serializers.ModelSerializer):
             except Exception:
                 return 'belum_tersedia'
         return cert.status
+
+    def get_certificate_download_count(self, obj):
+        cert = obj.certificates.first()
+        return cert.download_count if cert else 0
+
+    def get_certificate_last_downloaded_at(self, obj):
+        cert = obj.certificates.first()
+        return cert.last_downloaded_at if cert else None
